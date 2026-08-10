@@ -46,7 +46,7 @@ it is in.
 | Table | Purpose |
 |---|---|
 | `jobs` | Raw JD plus the parsed `title`, `company`, `location`, `seniority`, `skills[]` |
-| `candidates` | Sourced people, unique on `(job_id, phone)` so re-sourcing is idempotent |
+| `candidates` | Sourced people. Deduplicated per job on `(job_id, phone)` for candidates that have a number, and on a partial unique index `(job_id, linkedin) where linkedin is not null` for those that don't — Postgres treats NULLs as distinct, so the phone constraint alone stops deduplicating once `phone` is nullable. Either way, re-running sourcing is idempotent. |
 | `calls` | One row per Hunar call, keyed by Hunar's call id; holds status, extracted `result` JSON, recording URL, engagement, duration |
 
 ---
