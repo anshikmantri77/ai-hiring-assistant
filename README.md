@@ -54,10 +54,16 @@ it is in.
 ```bash
 npm install
 cp .env.example .env.local     # then fill it in — see the table below
+npm run preflight              # verifies the Hunar key and that a from-number can dial +91
 npm run db:push                # applies schema.sql (idempotent)
 npm run seed:agent             # prints HUNAR_AGENT_ID; paste it into .env.local
+npm run preflight              # re-run: also confirms HUNAR_AGENT_ID resolves
 npm run dev
 ```
+
+Run `preflight` first. `POST /external/v1/calls/` returns a `400` if the org has no
+validated from-number whose `allowed_countries` includes `IN`, and that failure looks
+identical to a code bug from the dashboard.
 
 Open http://localhost:3000.
 

@@ -76,6 +76,21 @@ export function listAgents(): Promise<{ results: Agent[] }> {
   return request('/external/v1/agents/');
 }
 
+export type HunarNumber = {
+  phone_number: string;
+  country_code: CountryCode;
+  /** Countries this number may dial. A +91 callee needs 'IN' in here. */
+  allowed_countries: CountryCode[];
+  is_default: boolean;
+  is_validated: boolean;
+};
+
+export type CountryCode = 'IN' | 'US' | 'SA' | 'GB';
+
+export function listNumbers(): Promise<{ results: HunarNumber[] }> {
+  return request('/external/v1/numbers/');
+}
+
 export type CreateAgentInput = {
   name: string;
   voice_persona: 'NEHA' | 'ROY' | 'ZOE' | 'SAM' | 'MIRA' | 'EESHA';
