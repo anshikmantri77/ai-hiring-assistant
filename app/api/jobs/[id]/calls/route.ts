@@ -54,14 +54,8 @@ export async function GET(_req: Request, { params }: Params): Promise<NextRespon
 export async function POST(req: Request, { params }: Params): Promise<NextResponse> {
   const { id } = await params;
   try {
-    const agentId = process.env.HUNAR_AGENT_ID;
-    if (!agentId) {
-      return NextResponse.json(
-        { error: 'HUNAR_AGENT_ID is not set. Run `npm run seed:agent` and paste the id into .env.local.' },
-        { status: 500 },
-      );
-    }
-
+    // Validate the request before the server's own configuration, so a caller
+    // sending bad input is told about their input rather than our env vars.
     const { candidateIds } = (await req.json()) as { candidateIds?: unknown };
     if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
       return NextResponse.json({ error: 'Select at least one candidate.' }, { status: 400 });
@@ -69,6 +63,14 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
     // Postgres raises on a malformed uuid literal, which would surface as a 500.
     if (!candidateIds.every((v): v is string => typeof v === 'string' && UUID.test(v))) {
       return NextResponse.json({ error: 'candidateIds must be uuids.' }, { status: 400 });
+    }
+
+    const agentId = process.env.HUNAR_AGENT_ID;
+    if (!agentId) {
+      return NextResponse.json(
+        { error: 'HUNAR_AGENT_ID is not set. Run `npm run seed:agent` and paste the id into .env.local.' },
+        { status: 500 },
+      );
     }
 
     const [job] = await sql<Job[]>`select * from jobs where id = ${id}`;

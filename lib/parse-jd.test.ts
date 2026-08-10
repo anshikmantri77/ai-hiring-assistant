@@ -19,6 +19,15 @@ test('keyword fallback extracts the core fields', async () => {
   assert.ok(parsed.skills.includes('salesforce'));
 });
 
+test('company stops at the first lowercase word, not the end of the sentence', async () => {
+  delete process.env.ANTHROPIC_API_KEY;
+  // This value is spoken aloud in the call intro, so an over-greedy match is
+  // audible, not just cosmetic.
+  assert.equal((await parseJd(JD)).company, 'Gigstaan');
+  assert.equal((await parseJd('Role at Acme Corp India for the Pune office.')).company, 'Acme Corp India');
+  assert.equal((await parseJd('Sales role. No employer named here at all.')).company, '');
+});
+
 test('empty description does not throw', async () => {
   delete process.env.ANTHROPIC_API_KEY;
   const parsed = await parseJd('');

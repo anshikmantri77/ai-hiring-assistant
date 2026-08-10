@@ -87,7 +87,10 @@ function keywordParse(rawJd: string): ParsedJd {
   const firstLine = rawJd.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
   const title = firstLine.replace(/^(job title|role|position)\s*[:\-]\s*/i, '').slice(0, 120);
 
-  const company = rawJd.match(/\b(?:at|company|employer)\s*[:\-]?\s*([A-Z][\w&.\- ]{2,40})/)?.[1]?.trim() ?? '';
+  // Capitalized words only, at most four, so the match stops at the first
+  // lowercase word instead of swallowing the rest of the sentence.
+  const company =
+    rawJd.match(/\b(?:at|company|employer)\s*[:\-]?\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,3})/)?.[1]?.trim() ?? '';
   const location = CITIES.find((c) => lower.includes(c.toLowerCase())) ?? '';
   const seniority = SENIORITY.find(([re]) => re.test(rawJd))?.[1] ?? 'Unspecified';
   const skills = KNOWN_SKILLS.filter((s) => lower.includes(s));
