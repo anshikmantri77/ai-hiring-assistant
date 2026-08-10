@@ -8,7 +8,8 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { ssl: 'require' });
+// Matches lib/db.ts: hosted Postgres requires TLS, a local server usually has none.
+const sql = postgres(url, { ssl: /localhost|127\.0\.0\.1/.test(url) ? false : 'require' });
 try {
   await sql.unsafe(readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
   console.log('Schema applied.');
