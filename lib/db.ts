@@ -65,6 +65,7 @@ export type Call = {
   engagement_status: string | null;
   answered_by: string | null;
   duration_seconds: string | null;
+  created_at: string;
   updated_at: Date;
 };
 

@@ -147,22 +147,9 @@ export function getCall(callId: string): Promise<CallDetail> {
   return request(`/external/v1/calls/${callId}/`);
 }
 
-/**
- * The spec marks the call-detail `status` as "automatically converted to
- * label", so Hunar may return `In Progress` where the enum says `IN_PROGRESS`.
- * Everything is normalized back to the enum spelling on the way into the
- * database, so the rest of the app only ever sees canonical values.
- */
-export function normalizeStatus(status: string): string {
-  return status.trim().toUpperCase().replace(/[^A-Z]+/g, '_');
-}
-
-/** Terminal statuses — no point polling a call in one of these. */
-const SETTLED = new Set(['COMPLETED', 'NOT_CONNECTED', 'CANCELLED', 'FAILED']);
-
-export function isSettled(status: string | null | undefined): boolean {
-  return status ? SETTLED.has(normalizeStatus(status)) : false;
-}
+// Extension is required: scripts/ load this file directly under
+// `node --experimental-strip-types`, which does not resolve extensionless paths.
+export { normalizeStatus, isSettled } from './call-state.ts';
 
 /**
  * Callback URLs for a call. Returns undefined when APP_URL is a localhost

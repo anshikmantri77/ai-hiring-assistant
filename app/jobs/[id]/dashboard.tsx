@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { CandidateRow } from '@/lib/db';
-
-const SETTLED = new Set(['COMPLETED', 'NOT_CONNECTED', 'CANCELLED', 'FAILED']);
+import { needsRefresh, normalizeStatus } from '@/lib/call-state';
 
 const STATUS_STYLE: Record<string, string> = {
   COMPLETED: 'border-accent/40 text-accent',
@@ -30,7 +29,7 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
   }, [jobId]);
 
   // Poll only while something is actually in flight, so an idle dashboard is quiet.
-  const inFlight = rows.some((r) => r.call && !SETTLED.has(r.call.status.toUpperCase()));
+  const inFlight = rows.some((r) => r.call && needsRefresh(r.call));
   useEffect(() => {
     if (!inFlight) return;
     const timer = setInterval(() => {
@@ -155,7 +154,7 @@ function CandidateCard({
   onToggle: () => void;
 }) {
   const call = row.call;
-  const status = call?.status.toUpperCase() ?? '';
+  const status = call ? normalizeStatus(call.status) : '';
   const result = call?.result ?? null;
 
   return (

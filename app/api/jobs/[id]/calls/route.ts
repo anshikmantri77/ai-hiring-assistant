@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql, candidateRows, type Candidate, type Job } from '@/lib/db';
-import { createCall, getCall, callbackConfig, isSettled, normalizeStatus } from '@/lib/hunar';
+import { createCall, getCall, callbackConfig, normalizeStatus } from '@/lib/hunar';
+import { needsRefresh } from '@/lib/call-state';
 import { message } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
@@ -19,7 +20,7 @@ export async function GET(_req: Request, { params }: Params): Promise<NextRespon
   const { id } = await params;
   try {
     const rows = await candidateRows(id);
-    const pending = rows.filter((r) => r.call && !isSettled(r.call.status));
+    const pending = rows.filter((r) => r.call && needsRefresh(r.call));
 
     await Promise.all(
       pending.map(async (row) => {
