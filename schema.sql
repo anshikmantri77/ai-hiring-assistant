@@ -3,7 +3,7 @@
 create table if not exists jobs (
   id          uuid primary key default gen_random_uuid(),
   title       text        not null,
-  company     text        not null default 'Hunar.ai',
+  company     text        not null default '',
   location    text        not null default '',
   seniority   text        not null default '',
   skills      text[]      not null default '{}',
@@ -58,3 +58,12 @@ create unique index if not exists candidates_job_linkedin_key
 -- it, so a non-zero value proves the webhook path fired rather than polling.
 alter table calls add column if not exists webhook_events integer not null default 0;
 alter table calls drop column if exists summary;
+
+-- The dashboard's lateral join is `where candidate_id = ? order by created_at
+-- desc limit 1`, so the sort column belongs in the index.
+create index if not exists calls_candidate_created_idx on calls (candidate_id, created_at desc);
+drop index if exists calls_candidate_id_idx;
+
+-- Vestigial: the insert always supplies a company, so this default never fired
+-- and 'Hunar.ai' was misleading in a schema dump.
+alter table jobs alter column company set default '';

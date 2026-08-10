@@ -47,7 +47,7 @@ it is in.
 |---|---|
 | `jobs` | Raw JD plus the parsed `title`, `company`, `location`, `seniority`, `skills[]` |
 | `candidates` | Sourced people. Deduplicated per job on `(job_id, phone)` for candidates that have a number, and on a partial unique index `(job_id, linkedin) where linkedin is not null` for those that don't — Postgres treats NULLs as distinct, so the phone constraint alone stops deduplicating once `phone` is nullable. Either way, re-running sourcing is idempotent. |
-| `calls` | One row per Hunar call, keyed by Hunar's call id; holds status, extracted `result` JSON, recording URL, engagement, duration |
+| `calls` | One row per Hunar call, keyed by **Hunar's** call id — which makes duplicate callbacks idempotent without a mapping table. Holds status, extracted `result` JSON, recording URL, engagement, duration, and `webhook_events` (incremented only by the webhook route). |
 
 ---
 
@@ -80,7 +80,7 @@ key you need is `HUNAR_API_KEY`.
 | `HUNAR_API_KEY` | yes | Sent as the `X-API-Key` header on every Hunar request. |
 | `HUNAR_AGENT_ID` | yes | Produced by `npm run seed:agent`. |
 | `APP_URL` | for webhooks | Public HTTPS origin Hunar calls back. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
-| `WEBHOOK_TOKEN` | for webhooks | Shared secret appended as `?token=…` to every callback URL; the webhook route rejects anything else. Generate with `openssl rand -hex 24`. |
+| `WEBHOOK_TOKEN` | for webhooks | Secondary gate appended as `?token=…` to every callback URL. The primary control is Hunar's HMAC signature, verified with `HUNAR_API_KEY`. Generate with `openssl rand -hex 24`. |
 | `PEOPLE_PROVIDER` | no | `mock` (default), `searchapi`, `pdl`, or `apollo`. |
 | `SEARCHAPI_API_KEY` | only for `searchapi` | SearchAPI.io key. Finds real LinkedIn profiles but returns no phone number — those candidates are stored as not-callable. |
 | `PDL_API_KEY` | only for `pdl` | People Data Labs key — free tier on signup. Search is scoped to `dataset: "mobile_phone"` so results carry a dialable number. |
@@ -161,11 +161,18 @@ string, so one would never populate.
 npm test
 ```
 
-Covers the no-LLM job-description parser (the path the demo runs on) and call-status
-normalization. The latter matters: the call-detail `status` is documented as
-"automatically converted to label", so Hunar may return `Not Connected` where the enum
-says `NOT_CONNECTED`. Every status is normalized to the enum spelling before it is
-stored, otherwise terminal-state detection fails and the dashboard polls forever.
+18 tests, no framework — Node's built-in runner. They cover the three places where a
+silent logic bug would be invisible until production:
+
+- **Job-description parsing** (the keyword path, which is the default) — including a
+  regression for an over-greedy company match that reached the *spoken* introduction.
+- **Call-status handling.** The call-detail `status` is documented as "automatically
+  converted to label", so Hunar may return `Not Connected` where the enum says
+  `NOT_CONNECTED`. Statuses are normalized before storage; without it, terminal-state
+  detection fails and the dashboard polls forever. Also covers the polling window that
+  stays open after `COMPLETED` until `result` and `recording_url` arrive.
+- **Webhook signature verification** — valid, tampered body, wrong key, replayed
+  timestamp, multi-segment headers, and missing headers all fail closed.
 
 ### Before the live demo
 

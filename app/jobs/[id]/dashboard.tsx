@@ -70,12 +70,14 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
       const body = (await res.json()) as {
         launched?: number;
         failed?: { error: string }[];
+        skipped?: string[];
         webhooksEnabled?: boolean;
         error?: string;
       };
       if (!res.ok) throw new Error(body.error ?? 'Could not launch calls.');
 
       const parts = [`Launched ${body.launched} call${body.launched === 1 ? '' : 's'}.`];
+      if (body.skipped?.length) parts.push(`Already in progress: ${body.skipped.join(', ')}.`);
       if (body.failed?.length) parts.push(`${body.failed.length} failed: ${body.failed[0].error}`);
       if (!body.webhooksEnabled) parts.push('APP_URL is not a public https origin — polling Hunar instead of webhooks.');
       setNotice(parts.join(' '));

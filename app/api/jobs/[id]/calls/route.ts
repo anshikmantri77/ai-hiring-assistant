@@ -100,9 +100,28 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       );
     }
 
+    // Guard against double-dispatch. Hunar assigns a fresh call id per request,
+    // so `on conflict (id)` cannot catch this — two clicks would place two real
+    // calls to the same person. Skip anyone who already has a call in flight.
+    const busy = await sql<{ candidate_id: string }[]>`
+      select distinct candidate_id from calls
+       where candidate_id = any(${reachable.map((c) => c.id)}::uuid[])
+         and status not in ('COMPLETED', 'NOT_CONNECTED', 'CANCELLED', 'FAILED')
+    `;
+    const busyIds = new Set(busy.map((b) => b.candidate_id));
+    const toCall = reachable.filter((c) => !busyIds.has(c.id));
+    const skipped = reachable.filter((c) => busyIds.has(c.id)).map((c) => c.name);
+
+    if (toCall.length === 0) {
+      return NextResponse.json(
+        { error: `Already calling ${skipped.join(', ')}. Wait for the call to finish.` },
+        { status: 409 },
+      );
+    }
+
     const callbacks = callbackConfig();
     const outcomes = await Promise.all(
-      reachable.map(async (c) => {
+      toCall.map(async (c) => {
         try {
           const call = await createCall({
             callee_name: c.name,
@@ -133,6 +152,7 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
     return NextResponse.json({
       launched: outcomes.filter((o) => o.ok).length,
       failed: outcomes.filter((o) => !o.ok),
+      skipped,
       // Surfaced in the UI so a localhost run explains its own missing webhooks.
       webhooksEnabled: Boolean(callbacks),
     });
