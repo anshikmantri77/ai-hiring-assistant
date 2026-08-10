@@ -146,8 +146,15 @@ stored, otherwise terminal-state detection fails and the dashboard polls forever
 
 ### Before the live demo
 
-Replace one phone number in [`data/candidates.sample.json`](data/candidates.sample.json)
-with your own `+91` number — that is the row that will actually ring.
+Point one sourced candidate at a real number. Do this against the database, not the
+sample file, so the number never enters git:
+
+```bash
+npm run set-phone -- "Rohan Mehta" +919876543210
+```
+
+Re-running sourcing will not undo it — the upsert is `on conflict do nothing`, and the
+sample row's original number no longer matches that row.
 
 ---
 

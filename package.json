@@ -10,7 +10,8 @@
     "db:push": "node --env-file-if-exists=.env.local scripts/db-push.mjs",
     "seed:agent": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/seed-agent.ts",
     "test": "node --experimental-strip-types --test lib/*.test.ts",
-    "preflight": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/preflight.ts"
+    "preflight": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/preflight.ts",
+    "set-phone": "node --env-file-if-exists=.env.local scripts/set-phone.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
