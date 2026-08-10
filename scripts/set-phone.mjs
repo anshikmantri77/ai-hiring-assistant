@@ -32,20 +32,33 @@ const sql = postgres(process.env.DATABASE_URL, {
 });
 
 try {
+  // Scope to the newest job. Matching by name alone spans every job, which
+  // picks a stale row and can collide with the (job_id, phone) unique index.
+  const [job] = await sql`select id, title from jobs order by created_at desc limit 1`;
+  if (!job) {
+    console.error('No jobs yet. Create one and run sourcing first.');
+    process.exit(1);
+  }
+
   const rows = await sql`
     update candidates set phone = ${phone}
-     where id = (select id from candidates where name = ${name} order by created_at limit 1)
+     where job_id = ${job.id} and name = ${name}
      returning id, name
   `;
   if (rows.length === 0) {
-    console.error(`No candidate named "${name}". Run sourcing first, then re-run this.`);
+    console.error(`No candidate named "${name}" on the latest job ("${job.title}").`);
+    console.error('Run sourcing on that job first, then re-run this.');
     process.exitCode = 1;
   } else {
-    console.log(`Updated ${rows[0].name} -> ${masked}`);
+    console.log(`Job "${job.title}": updated ${rows[0].name} -> ${masked}`);
     console.log('This row is now the one that will actually ring. Select only it.');
   }
 } catch (err) {
-  console.error('Update failed:', err instanceof Error ? err.message : err);
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error('Update failed:', msg);
+  if (msg.includes('candidates_job_id_phone_key')) {
+    console.error('Another candidate on this job already has that number — pick a different name.');
+  }
   process.exitCode = 1;
 } finally {
   await sql.end();
