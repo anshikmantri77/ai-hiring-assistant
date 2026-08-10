@@ -20,6 +20,7 @@ flowchart LR
 
   U -->|Source candidates| S["/api/jobs/:id/source"]
   S --> PS{PEOPLE_PROVIDER}
+  PS -->|pdl| PD[People Data Labs person search]
   PS -->|apollo| AP[Apollo.io people search]
   PS -->|mock| MK[candidates.sample.json]
   S --> DB
@@ -79,7 +80,8 @@ key you need is `HUNAR_API_KEY`.
 | `HUNAR_AGENT_ID` | yes | Produced by `npm run seed:agent`. |
 | `APP_URL` | for webhooks | Public HTTPS origin Hunar calls back. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
 | `WEBHOOK_TOKEN` | for webhooks | Shared secret appended as `?token=…` to every callback URL; the webhook route rejects anything else. Generate with `openssl rand -hex 24`. |
-| `PEOPLE_PROVIDER` | no | `mock` (default) or `apollo`. |
+| `PEOPLE_PROVIDER` | no | `mock` (default), `pdl`, or `apollo`. |
+| `PDL_API_KEY` | only for `pdl` | People Data Labs key — free tier on signup. Search is scoped to `dataset: "mobile_phone"` so results carry a dialable number. |
 | `APOLLO_API_KEY` | only for `apollo` | Apollo.io key. Phone numbers come back only on plans with phone reveal enabled; candidates without a number are dropped. |
 | `ANTHROPIC_API_KEY` | no | Enables Claude-based JD parsing. Without it, parsing falls back to keyword extraction. |
 
@@ -214,10 +216,16 @@ unresolved sites to a human, which is why the reconciliation step exists.
 
 ## Notes and known limits
 
-- Apollo's people search returns phone numbers only on plans with phone reveal enabled.
-  Candidates without a reachable number are filtered out rather than saved unreachable,
-  so a search can legitimately return zero rows; the mock provider is there so the demo
-  never depends on that.
+- **Real sourcing runs through People Data Labs** (`PEOPLE_PROVIDER=pdl`). The query is
+  built from the parsed JD — title and location — and pinned to `dataset: "mobile_phone"`
+  with `mobile_phone IS NOT NULL`, because a candidate without a dialable number is
+  useless to a voice screener. Free-tier keys have limited credits and each returned
+  record costs one.
+- Apollo is implemented as a second provider, but its phone numbers require a plan with
+  phone reveal enabled. Candidates without a reachable number are filtered out rather
+  than stored unreachable, so an Apollo search on a free plan can legitimately return
+  zero rows.
+- The mock provider exists so the demo never depends on a third-party plan tier.
 - Call summaries arrive only via the `summary` webhook — they are not on Hunar's
   call-detail response — so on a localhost-only run the summary column stays empty
   while every other field fills in from polling.

@@ -13,14 +13,21 @@ export type SourcedCandidate = {
   linkedin: string | null;
 };
 
-export type Provider = 'mock' | 'apollo';
+export type Provider = 'mock' | 'apollo' | 'pdl';
 
 export function activeProvider(): Provider {
-  return process.env.PEOPLE_PROVIDER === 'apollo' ? 'apollo' : 'mock';
+  const p = process.env.PEOPLE_PROVIDER;
+  return p === 'apollo' || p === 'pdl' ? p : 'mock';
 }
 
 export async function sourceCandidates(job: ParsedJd, limit = 10): Promise<SourcedCandidate[]> {
-  const found = activeProvider() === 'apollo' ? await fromApollo(job, limit) : await fromMock(limit);
+  const provider = activeProvider();
+  const found =
+    provider === 'apollo'
+      ? await fromApollo(job, limit)
+      : provider === 'pdl'
+        ? await fromPdl(job, limit)
+        : fromMock(limit);
   // A screening call needs a reachable number; anything else is noise on the dashboard.
   return found.filter((c) => /^\+\d{10,15}$/.test(c.phone));
 }
@@ -79,6 +86,64 @@ async function fromApollo(job: ParsedJd, limit: number): Promise<SourcedCandidat
     // caller drops rows where this comes back empty.
     phone: toE164(p.sanitized_phone ?? p.phone_numbers?.[0]?.sanitized_number ?? ''),
     linkedin: p.linkedin_url ?? null,
+  }));
+}
+
+/**
+ * People Data Labs person record, narrowed to the fields we read.
+ * Field names per https://docs.peopledatalabs.com/docs/example-record
+ */
+type PdlPerson = {
+  full_name?: string | null;
+  job_title?: string | null;
+  job_company_name?: string | null;
+  location_name?: string | null;
+  mobile_phone?: string | null;
+  phone_numbers?: string[] | null;
+  linkedin_url?: string | null;
+};
+
+/**
+ * Builds a quoted LIKE literal for PDL's SQL filter. The value comes from a
+ * pasted job description, so single quotes are doubled to keep it inside the
+ * string literal rather than terminating it.
+ */
+const likeLiteral = (v: string) => `'%${v.replace(/'/g, "''")}%'`;
+
+async function fromPdl(job: ParsedJd, limit: number): Promise<SourcedCandidate[]> {
+  const key = process.env.PDL_API_KEY;
+  if (!key) throw new Error('PEOPLE_PROVIDER=pdl but PDL_API_KEY is not set');
+
+  const where: string[] = ['mobile_phone IS NOT NULL'];
+  if (job.title) where.push(`job_title LIKE ${likeLiteral(job.title.toLowerCase())}`);
+  // PDL stores country lowercase; the JD's city is matched against location_name.
+  if (job.location) where.push(`location_name LIKE ${likeLiteral(job.location.toLowerCase())}`);
+  else where.push("location_country = 'india'");
+
+  const res = await fetch('https://api.peopledatalabs.com/v5/person/search', {
+    method: 'POST',
+    headers: { 'X-Api-Key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sql: `SELECT * FROM person WHERE ${where.join(' AND ')}`,
+      // Restricts results to records that actually carry a mobile number —
+      // without this most rows come back unreachable and get filtered away.
+      dataset: 'mobile_phone',
+      size: Math.min(limit, 100),
+      titlecase: true,
+    }),
+  });
+
+  const text = await res.text();
+  if (!res.ok) throw new Error(`PDL search failed (${res.status}): ${text.slice(0, 300)}`);
+
+  const people = (JSON.parse(text).data ?? []) as PdlPerson[];
+  return people.map((p) => ({
+    name: p.full_name ?? 'Unknown',
+    title: p.job_title ?? '',
+    company: p.job_company_name ?? '',
+    location: p.location_name ?? '',
+    phone: toE164(p.mobile_phone ?? p.phone_numbers?.[0] ?? ''),
+    linkedin: p.linkedin_url ? `https://www.${p.linkedin_url.replace(/^https?:\/\/(www\.)?/, '')}` : null,
   }));
 }
 
