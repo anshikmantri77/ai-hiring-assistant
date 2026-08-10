@@ -31,7 +31,13 @@ try {
 try {
   const { results: numbers } = await listNumbers();
   if (numbers.length === 0) {
-    problems.push('No from-numbers on the org — POST /calls/ will fail with a 400.');
+    // from_phone_number is optional in the spec, so Hunar may still route via a
+    // platform default. Report what is observable; do not assert the outcome.
+    problems.push(
+      'No from-numbers listed on the org. Calls may still route via a Hunar default, ' +
+        'but nothing here can confirm a +91 destination is permitted — ask Hunar to ' +
+        'confirm or provision an IN-capable number before relying on a live call.',
+    );
   }
   for (const n of numbers) {
     const dialsIndia = n.allowed_countries.includes('IN');

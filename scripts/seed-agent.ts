@@ -6,10 +6,10 @@ import { listAgents, createAgent } from '../lib/hunar.ts';
 
 const AGENT_NAME = 'AI Hiring Assistant — Screener';
 
-const AGENT_PROMPT = `You are a recruitment screening assistant calling a candidate about a {{job_role}} opening at {{company}} in {{location}}.
+const AGENT_PROMPT = `You are a recruitment screening assistant calling a candidate about a {job_role} opening at {company} in {location}.
 
 Keep the call under three minutes and ask these four things, one at a time, in order:
-1. Whether they are interested in the {{job_role}} role.
+1. Whether they are interested in the {job_role} role.
 2. Their current notice period.
 3. Their expected CTC.
 4. The earliest date they could start.
@@ -18,7 +18,7 @@ If the candidate says it is a bad time, offer to call back and end politely.
 If they are not interested, thank them and end the call — do not ask the remaining questions.
 Never invent details about salary, benefits, or the interview process; if asked something you do not know, say a recruiter will follow up.`;
 
-const INTRODUCTION = `Hi, am I speaking with {{callee_name}}? This is an assistant calling from {{company}} about a {{job_role}} opening in {{location}}. Do you have two minutes?`;
+const INTRODUCTION = `Hi, am I speaking with {callee_name}? This is an assistant calling from {company} about a {job_role} opening in {location}. Do you have two minutes?`;
 
 const RESULT_PROMPT = `From the conversation, extract the candidate's answers. If the candidate did not answer a question, use an empty string for that field and set interested to false only when they explicitly declined.`;
 

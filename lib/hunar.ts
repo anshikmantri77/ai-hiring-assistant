@@ -122,7 +122,11 @@ export type CreateCallInput = {
   /** E.164, e.g. +919876543210 */
   mobile_number: string;
   agent_id: string;
-  /** Injected into the agent prompt as {{variables}}. String values only. */
+  /**
+   * Injected into the agent prompt. Hunar templates use SINGLE braces in
+   * snake_case — `{job_role}`, not `{{job_role}}`; the double form is rejected
+   * at agent creation with a 400. String values only.
+   */
   custom_data?: Record<string, string>;
   callback_config?: {
     call_status_callback_url?: string;
