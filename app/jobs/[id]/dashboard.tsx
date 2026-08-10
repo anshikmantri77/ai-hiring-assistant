@@ -221,10 +221,8 @@ function CandidateCard({
             />
           </dl>
 
-          {(call.summary || typeof result?.summary === 'string') && (
-            <p className="text-xs leading-relaxed text-muted">
-              {call.summary ?? String(result?.summary)}
-            </p>
+          {typeof result?.summary === 'string' && result.summary && (
+            <p className="text-xs leading-relaxed text-muted">{result.summary}</p>
           )}
 
           {call.recording_url && (

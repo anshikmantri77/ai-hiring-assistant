@@ -51,3 +51,10 @@ alter table candidates alter column phone drop not null;
 -- longer dedupes phoneless rows. LinkedIn URL is the stable identity for those.
 create unique index if not exists candidates_job_linkedin_key
   on candidates (job_id, linkedin) where linkedin is not null;
+
+-- The `call_summary` event carries no summary string (see Hunar's webhook
+-- payload reference), so a populated summary column cannot be used as evidence
+-- that callbacks arrived. This counter can: only the webhook route increments
+-- it, so a non-zero value proves the webhook path fired rather than polling.
+alter table calls add column if not exists webhook_events integer not null default 0;
+alter table calls drop column if exists summary;

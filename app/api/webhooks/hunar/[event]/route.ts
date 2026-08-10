@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
 import { getCall, normalizeStatus } from '@/lib/hunar';
+import { verifySignature } from '@/lib/webhook-signature';
 import { message } from '@/lib/http';
 
 type Params = { params: Promise<{ event: string }> };
@@ -10,10 +11,16 @@ const EVENTS = new Set(['status', 'result', 'recording', 'summary']);
 /**
  * Receives Hunar's status/result/recording/summary callbacks.
  *
- * The payload shape differs per event, so rather than parse four shapes we use
- * it only to identify the call, then re-read the authoritative record from
- * Hunar. `summary` is the exception: it is not on the call-detail response, so
- * it is taken from the payload when present.
+ * Authenticated two ways. The primary control is Hunar's HMAC signature over
+ * the raw body — that proves the request came from Hunar and has not been
+ * replayed. The `?token=` check is a secondary gate carried on the callback
+ * URL itself, kept because it costs nothing and fails closed if signing is
+ * ever unavailable.
+ *
+ * The payload is used only to identify the call; authoritative state is then
+ * re-read from Hunar. One handler therefore covers all four callback shapes,
+ * duplicate deliveries converge on the same result, and a partial payload
+ * cannot corrupt a row.
  */
 export async function POST(req: Request, { params }: Params): Promise<NextResponse> {
   const { event } = await params;
@@ -21,28 +28,42 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
     return NextResponse.json({ error: 'Unknown event.' }, { status: 404 });
   }
 
-  const expected = process.env.WEBHOOK_TOKEN;
+  const expectedToken = process.env.WEBHOOK_TOKEN;
   const token = new URL(req.url).searchParams.get('token');
-  // Public endpoint — an unauthenticated caller could otherwise rewrite call rows.
-  if (!expected || token !== expected) {
+  if (!expectedToken || token !== expectedToken) {
     return NextResponse.json({ error: 'Forbidden.' }, { status: 403 });
   }
 
+  // Read the body as raw text: the signature is computed over exactly these
+  // bytes, so parsing before verifying would make it unverifiable.
+  const rawBody = await req.text();
+
+  const apiKey = process.env.HUNAR_API_KEY;
+  const verdict = verifySignature({
+    signatureHeader: req.headers.get('x-hunar-signature'),
+    timestampHeader: req.headers.get('x-hunar-timestamp'),
+    rawBody,
+    trustedKeys: apiKey ? [apiKey] : [],
+  });
+  if (!verdict.ok) {
+    console.error(`Hunar ${event} webhook signature rejected: ${verdict.reason}`);
+    return NextResponse.json({ error: 'Invalid signature.' }, { status: 401 });
+  }
+
   try {
-    const payload = (await req.json()) as Record<string, unknown>;
+    const payload = JSON.parse(rawBody) as Record<string, unknown>;
     const callId = extractCallId(payload);
     if (!callId) {
-      console.error(`Hunar ${event} webhook had no call id`, payload);
-      return NextResponse.json({ error: 'No call id in payload.' }, { status: 400 });
+      console.error(`Hunar ${event} webhook had no call id`);
+      // 200, not 400: Hunar retries 4xx, and a payload we cannot parse will
+      // not become parseable on a retry.
+      return NextResponse.json({ ignored: 'no call id' });
     }
 
-    // Ignore callbacks for calls this deployment did not create.
     const [known] = await sql<{ id: string }[]>`select id from calls where id = ${callId}`;
-    if (!known) return NextResponse.json({ ignored: true });
+    if (!known) return NextResponse.json({ ignored: 'unknown call' });
 
     const detail = await getCall(callId);
-    const summary = event === 'summary' ? extractSummary(payload) : null;
-
     await sql`
       update calls set
         status            = ${normalizeStatus(detail.status)},
@@ -51,7 +72,7 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
         engagement_status = ${detail.engagement_status},
         answered_by       = ${detail.answered_by},
         duration_seconds  = ${detail.duration_seconds},
-        summary           = coalesce(${summary}, summary),
+        webhook_events    = webhook_events + 1,
         updated_at        = now()
       where id = ${callId}
     `;
@@ -64,25 +85,8 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Hunar has not pinned a callback body shape, so accept the plausible keys. */
+/** Every documented Hunar event carries `call_id` at the top level. */
 function extractCallId(payload: Record<string, unknown>): string | null {
-  const nested = payload.data;
-  const sources = [payload, typeof nested === 'object' && nested ? (nested as Record<string, unknown>) : {}];
-  for (const source of sources) {
-    for (const key of ['call_id', 'callId', 'id']) {
-      const value = source[key];
-      if (typeof value === 'string' && UUID.test(value)) return value;
-    }
-  }
-  return null;
-}
-
-function extractSummary(payload: Record<string, unknown>): string | null {
-  const nested = payload.data;
-  const sources = [payload, typeof nested === 'object' && nested ? (nested as Record<string, unknown>) : {}];
-  for (const source of sources) {
-    const value = source.summary ?? source.call_summary;
-    if (typeof value === 'string' && value.trim()) return value;
-  }
-  return null;
+  const value = payload.call_id;
+  return typeof value === 'string' && UUID.test(value) ? value : null;
 }

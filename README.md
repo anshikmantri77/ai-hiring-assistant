@@ -119,9 +119,28 @@ Everything below was verified against the live OpenAPI document at
   `COMPLETED`, `NOT_CONNECTED`, `CANCELLED`, `FAILED`. The last four are terminal, so
   the dashboard stops polling once every call reaches one.
 
-The webhook route uses the callback payload only to identify the call, then re-reads
-the record from Hunar. That way one handler covers all four callback shapes, and a
-malformed or partial payload cannot corrupt a row.
+### Webhook authentication
+
+Hunar signs every callback: `X-Hunar-Signature` is a base64 HMAC-SHA256 over
+`{X-Hunar-Timestamp}.` + the raw request body, keyed with an API key, and may carry
+several comma-separated digests when an org has more than one active key. The route
+verifies that signature over the **raw** body before parsing anything, rejects
+timestamps outside a 300-second window to block replays, and compares in constant
+time. A shared `?token=` on the callback URL is kept as a secondary gate.
+
+The payload is then used **only to identify the call** — authoritative state is re-read
+from `GET /external/v1/calls/{call_id}/`. One handler therefore covers all four
+callback shapes, duplicate deliveries converge on the same result, and a partial or
+malformed payload cannot corrupt a row.
+
+Requests that cannot be acted on return **200, not 4xx**: Hunar retries 4xx and 5xx
+four times with exponential backoff, and a payload that is unparseable now will still
+be unparseable on retry.
+
+`calls.webhook_events` is incremented only by this route, so a non-zero value is proof
+the webhook path fired rather than the polling fallback. There is no summary column —
+the `call_summary` event carries `status`, `recording_url` and `result`, but no summary
+string, so one would never populate.
 
 ---
 

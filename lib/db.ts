@@ -61,7 +61,8 @@ export type Call = {
   candidate_id: string;
   status: string;
   result: CallResult | null;
-  summary: string | null;
+  /** Incremented only by the webhook route — proves callbacks arrived. */
+  webhook_events: number;
   recording_url: string | null;
   engagement_status: string | null;
   answered_by: string | null;
