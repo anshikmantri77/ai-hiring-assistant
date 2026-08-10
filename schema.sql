@@ -41,3 +41,13 @@ create table if not exists calls (
 
 create index if not exists candidates_job_id_idx on candidates (job_id);
 create index if not exists calls_candidate_id_idx on calls (candidate_id);
+
+-- Sourcing providers differ in what they can return. A SERP-based search finds
+-- real profiles but no phone number, so a candidate may exist without one; it
+-- simply cannot be screened until a number is attached.
+alter table candidates alter column phone drop not null;
+
+-- Postgres treats NULLs as distinct in a unique index, so (job_id, phone) no
+-- longer dedupes phoneless rows. LinkedIn URL is the stable identity for those.
+create unique index if not exists candidates_job_linkedin_key
+  on candidates (job_id, linkedin) where linkedin is not null;

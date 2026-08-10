@@ -51,7 +51,8 @@ export type Candidate = {
   title: string;
   company: string;
   location: string;
-  phone: string;
+  /** Null when the sourcing provider found the profile but no number. */
+  phone: string | null;
   linkedin: string | null;
 };
 

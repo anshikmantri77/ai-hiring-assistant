@@ -8,16 +8,20 @@ export type SourcedCandidate = {
   title: string;
   company: string;
   location: string;
-  /** E.164, always +91-normalized. Candidates without one are dropped. */
-  phone: string;
+  /**
+   * E.164, or null when the provider found the person but no number.
+   * A phoneless candidate is still worth storing — it just cannot be screened
+   * until a number is attached (see `npm run set-phone`).
+   */
+  phone: string | null;
   linkedin: string | null;
 };
 
-export type Provider = 'mock' | 'apollo' | 'pdl';
+export type Provider = 'mock' | 'apollo' | 'pdl' | 'searchapi';
 
 export function activeProvider(): Provider {
   const p = process.env.PEOPLE_PROVIDER;
-  return p === 'apollo' || p === 'pdl' ? p : 'mock';
+  return p === 'apollo' || p === 'pdl' || p === 'searchapi' ? p : 'mock';
 }
 
 export async function sourceCandidates(job: ParsedJd, limit = 10): Promise<SourcedCandidate[]> {
@@ -27,9 +31,16 @@ export async function sourceCandidates(job: ParsedJd, limit = 10): Promise<Sourc
       ? await fromApollo(job, limit)
       : provider === 'pdl'
         ? await fromPdl(job, limit)
-        : fromMock(limit);
-  // A screening call needs a reachable number; anything else is noise on the dashboard.
-  return found.filter((c) => /^\+\d{10,15}$/.test(c.phone));
+        : provider === 'searchapi'
+          ? await fromSearchApi(job, limit)
+          : fromMock(limit);
+  // Keep everyone the provider found. Anything that is not a valid E.164 number
+  // becomes null rather than being discarded: the profile is still a real lead,
+  // it just is not callable yet.
+  return found.map((c) => ({
+    ...c,
+    phone: c.phone && /^\+\d{10,15}$/.test(c.phone) ? c.phone : null,
+  }));
 }
 
 function fromMock(limit: number): SourcedCandidate[] {
@@ -145,6 +156,51 @@ async function fromPdl(job: ParsedJd, limit: number): Promise<SourcedCandidate[]
     phone: toE164(p.mobile_phone ?? p.phone_numbers?.[0] ?? ''),
     linkedin: p.linkedin_url ? `https://www.${p.linkedin_url.replace(/^https?:\/\/(www\.)?/, '')}` : null,
   }));
+}
+
+/** A single organic result from SearchAPI's Google engine. */
+type SerpResult = { title?: string; link?: string; snippet?: string };
+
+/**
+ * SearchAPI.io — a SERP API, not a contact database. It finds real public
+ * LinkedIn profiles matching the job description, but returns no phone number,
+ * so every candidate it produces arrives un-callable by design. Attach a number
+ * with `npm run set-phone` to screen one.
+ */
+async function fromSearchApi(job: ParsedJd, limit: number): Promise<SourcedCandidate[]> {
+  const key = process.env.SEARCHAPI_API_KEY;
+  if (!key) throw new Error('PEOPLE_PROVIDER=searchapi but SEARCHAPI_API_KEY is not set');
+
+  const terms = [job.title, job.location, ...job.skills.slice(0, 3)].filter(Boolean);
+  const url = new URL('https://www.searchapi.io/api/v1/search');
+  url.searchParams.set('engine', 'google');
+  // Restricted to profile pages so results are people, not job ads.
+  url.searchParams.set('q', `site:linkedin.com/in ${terms.join(' ')}`);
+  url.searchParams.set('num', String(Math.min(limit, 20)));
+  url.searchParams.set('api_key', key);
+
+  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`SearchAPI search failed (${res.status}): ${text.slice(0, 300)}`);
+
+  const results = (JSON.parse(text).organic_results ?? []) as SerpResult[];
+  return results
+    .filter((r) => r.link?.includes('linkedin.com/in'))
+    .map((r) => {
+      // Titles look like "Chenthil Kumar - Senior Backend Engineer | Java ...".
+      const [namePart, ...rest] = (r.title ?? '').split(' - ');
+      const headline = rest.join(' - ').replace(/\s*\|\s*LinkedIn\s*$/i, '').trim();
+      return {
+        name: namePart.trim() || 'Unknown',
+        // The segment after the last pipe is usually the employer or a skill;
+        // taking the first segment keeps it to the role.
+        title: headline.split('|')[0].trim(),
+        company: '',
+        location: job.location,
+        phone: null,
+        linkedin: r.link ?? null,
+      };
+    });
 }
 
 /** Assumes Indian numbers when no country code is present — Hunar dials +91. */

@@ -90,6 +90,9 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
   }
 
   function toggle(id: string) {
+    // A candidate with no number cannot be dialled; keep it out of the selection
+    // rather than letting the launch fail server-side.
+    if (!rows.find((r) => r.id === id)?.phone) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (!next.delete(id)) next.add(id);
@@ -164,13 +167,20 @@ function CandidateCard({
           type="checkbox"
           checked={checked}
           onChange={onToggle}
-          aria-label={`Select ${row.name}`}
-          className="mt-1 size-4 accent-[var(--color-accent)]"
+          disabled={!row.phone}
+          aria-label={
+            row.phone ? `Select ${row.name}` : `${row.name} has no phone number and cannot be screened`
+          }
+          className="mt-1 size-4 accent-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-30"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium">{row.name}</span>
-            <span className="text-xs text-muted">{row.phone}</span>
+            {row.phone ? (
+              <span className="text-xs text-muted">{row.phone}</span>
+            ) : (
+              <span className="text-xs text-amber-300/80">no phone — not callable</span>
+            )}
             {row.linkedin && (
               <a
                 href={row.linkedin}

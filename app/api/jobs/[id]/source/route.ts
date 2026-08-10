@@ -14,13 +14,13 @@ export async function POST(_req: Request, { params }: Params): Promise<NextRespo
     const found = await sourceCandidates(job);
     if (found.length === 0) {
       return NextResponse.json(
-        { error: `No candidates with a reachable phone number came back from ${activeProvider()}.` },
+        { error: `No candidates came back from ${activeProvider()}.` },
         { status: 404 },
       );
     }
 
-    // Re-running sourcing must not duplicate rows; the (job_id, phone) unique
-    // index makes the insert idempotent.
+    // Re-running sourcing must not duplicate rows. No conflict target: phoneless
+    // candidates dedupe on (job_id, linkedin), everyone else on (job_id, phone).
     const inserted = await sql`
       insert into candidates ${sql(
         found.map((c) => ({
@@ -33,7 +33,7 @@ export async function POST(_req: Request, { params }: Params): Promise<NextRespo
           linkedin: c.linkedin,
         })),
       )}
-      on conflict (job_id, phone) do nothing
+      on conflict do nothing
       returning id
     `;
     return NextResponse.json({ found: found.length, added: inserted.length });

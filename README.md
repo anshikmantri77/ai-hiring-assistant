@@ -20,6 +20,7 @@ flowchart LR
 
   U -->|Source candidates| S["/api/jobs/:id/source"]
   S --> PS{PEOPLE_PROVIDER}
+  PS -->|searchapi| SA[SearchAPI.io LinkedIn profile search]
   PS -->|pdl| PD[People Data Labs person search]
   PS -->|apollo| AP[Apollo.io people search]
   PS -->|mock| MK[candidates.sample.json]
@@ -80,7 +81,8 @@ key you need is `HUNAR_API_KEY`.
 | `HUNAR_AGENT_ID` | yes | Produced by `npm run seed:agent`. |
 | `APP_URL` | for webhooks | Public HTTPS origin Hunar calls back. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
 | `WEBHOOK_TOKEN` | for webhooks | Shared secret appended as `?token=…` to every callback URL; the webhook route rejects anything else. Generate with `openssl rand -hex 24`. |
-| `PEOPLE_PROVIDER` | no | `mock` (default), `pdl`, or `apollo`. |
+| `PEOPLE_PROVIDER` | no | `mock` (default), `searchapi`, `pdl`, or `apollo`. |
+| `SEARCHAPI_API_KEY` | only for `searchapi` | SearchAPI.io key. Finds real LinkedIn profiles but returns no phone number — those candidates are stored as not-callable. |
 | `PDL_API_KEY` | only for `pdl` | People Data Labs key — free tier on signup. Search is scoped to `dataset: "mobile_phone"` so results carry a dialable number. |
 | `APOLLO_API_KEY` | only for `apollo` | Apollo.io key. Phone numbers come back only on plans with phone reveal enabled; candidates without a number are dropped. |
 | `ANTHROPIC_API_KEY` | no | Enables Claude-based JD parsing. Without it, parsing falls back to keyword extraction. |
@@ -216,7 +218,18 @@ unresolved sites to a human, which is why the reconciliation step exists.
 
 ## Notes and known limits
 
-- **Real sourcing runs through People Data Labs** (`PEOPLE_PROVIDER=pdl`). The query is
+- **Sourcing is provider-pluggable, and the providers differ in what they can return.**
+  `searchapi` finds real people but no phone numbers; `pdl` and `apollo` can return
+  numbers but gate them behind account tier. A candidate without a number is stored
+  and shown, just not selectable for a call — the checkbox is disabled and the launch
+  endpoint rejects it with a 400. Attach a number with `npm run set-phone` to screen
+  someone found this way.
+- **SearchAPI.io** (`PEOPLE_PROVIDER=searchapi`) queries Google restricted to
+  `site:linkedin.com/in`, built from the parsed title, location and top skills. It is
+  the only provider here that signs up with a personal email, which is why it is the
+  one demonstrated end-to-end. Results dedupe on `(job_id, linkedin)` rather than
+  phone, since SERP output has no number and varies slightly between identical queries.
+- **People Data Labs** (`PEOPLE_PROVIDER=pdl`). The query is
   built from the parsed JD — title and location — and pinned to `dataset: "mobile_phone"`
   with `mobile_phone IS NOT NULL`, because a candidate without a dialable number is
   useless to a voice screener. Free-tier keys have limited credits and each returned

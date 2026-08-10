@@ -85,9 +85,24 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       return NextResponse.json({ error: 'No matching candidates for this job.' }, { status: 404 });
     }
 
+    // Sourcing keeps profiles that arrived without a number; they are real leads
+    // but cannot be dialled until one is attached.
+    const reachable = candidates.filter((c): c is Candidate & { phone: string } => Boolean(c.phone));
+    const unreachable = candidates.filter((c) => !c.phone);
+    if (unreachable.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            `No phone number for ${unreachable.map((c) => c.name).join(', ')}. ` +
+            'Attach one with `npm run set-phone -- "<name>" <+91…>` before screening.',
+        },
+        { status: 400 },
+      );
+    }
+
     const callbacks = callbackConfig();
     const outcomes = await Promise.all(
-      candidates.map(async (c) => {
+      reachable.map(async (c) => {
         try {
           const call = await createCall({
             callee_name: c.name,
