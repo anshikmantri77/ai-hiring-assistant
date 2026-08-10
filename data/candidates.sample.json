@@ -1,0 +1,43 @@
+[
+  {
+    "_comment": "REPLACE the phone on one of these with your own +91 number before the live demo — that is the row that will actually ring.",
+    "name": "Rohan Mehta",
+    "title": "Field Sales Executive",
+    "company": "Udaan",
+    "location": "Bangalore",
+    "phone": "+919000000001",
+    "linkedin": "https://www.linkedin.com/in/rohan-mehta-sample"
+  },
+  {
+    "name": "Priya Nair",
+    "title": "Territory Sales Manager",
+    "company": "Zomato",
+    "location": "Bangalore",
+    "phone": "+919000000002",
+    "linkedin": "https://www.linkedin.com/in/priya-nair-sample"
+  },
+  {
+    "name": "Arjun Deshpande",
+    "title": "Business Development Executive",
+    "company": "Swiggy",
+    "location": "Pune",
+    "phone": "+919000000003",
+    "linkedin": "https://www.linkedin.com/in/arjun-deshpande-sample"
+  },
+  {
+    "name": "Sneha Iyer",
+    "title": "Inside Sales Associate",
+    "company": "Freshworks",
+    "location": "Chennai",
+    "phone": "+919000000004",
+    "linkedin": "https://www.linkedin.com/in/sneha-iyer-sample"
+  },
+  {
+    "name": "Vikram Singh",
+    "title": "Area Sales Officer",
+    "company": "Dabur",
+    "location": "Delhi",
+    "phone": "+919000000005",
+    "linkedin": null
+  }
+]
