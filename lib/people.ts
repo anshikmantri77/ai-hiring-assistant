@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+// Imported rather than read from disk at runtime: Next.js does not trace
+// fs reads into the serverless bundle, so a runtime read 404s on Vercel.
+import sample from '../data/candidates.sample.json';
 import type { ParsedJd } from './parse-jd';
 
 export type SourcedCandidate = {
@@ -23,10 +25,15 @@ export async function sourceCandidates(job: ParsedJd, limit = 10): Promise<Sourc
   return found.filter((c) => /^\+\d{10,15}$/.test(c.phone));
 }
 
-async function fromMock(limit: number): Promise<SourcedCandidate[]> {
-  const path = new URL('../data/candidates.sample.json', import.meta.url);
-  const raw = await readFile(path, 'utf8');
-  return (JSON.parse(raw) as SourcedCandidate[]).slice(0, limit);
+function fromMock(limit: number): SourcedCandidate[] {
+  return sample.slice(0, limit).map((c) => ({
+    name: c.name,
+    title: c.title,
+    company: c.company,
+    location: c.location,
+    phone: c.phone,
+    linkedin: c.linkedin,
+  }));
 }
 
 /** Apollo's people-search response, narrowed to the fields we read. */

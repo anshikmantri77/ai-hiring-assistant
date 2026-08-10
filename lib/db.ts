@@ -76,7 +76,10 @@ export type CandidateRow = Candidate & {
 export async function candidateRows(jobId: string): Promise<CandidateRow[]> {
   const rows = await sql<(Candidate & { call: Call | null })[]>`
     select c.*,
-           to_jsonb(l.*) as call
+           -- Guard the unmatched side explicitly: to_jsonb() over a whole-row
+           -- reference from a LEFT JOIN can yield an object of nulls rather
+           -- than SQL NULL, which would read as "this candidate has a call".
+           case when l.id is null then null else to_jsonb(l.*) end as call
       from candidates c
       left join lateral (
         select * from calls

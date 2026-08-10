@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { sql, candidateRows, type Candidate, type Job } from '@/lib/db';
-import { createCall, getCall, callbackConfig, isSettled } from '@/lib/hunar';
+import { createCall, getCall, callbackConfig, isSettled, normalizeStatus } from '@/lib/hunar';
 import { message } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Spoken aloud when a job description names no employer. */
+const COMPANY_FALLBACK = 'the hiring team';
 
 /**
  * Dashboard data. Before returning, any call that is still in flight is
@@ -22,7 +27,7 @@ export async function GET(_req: Request, { params }: Params): Promise<NextRespon
           const detail = await getCall(row.call!.id);
           await sql`
             update calls set
-              status            = ${detail.status},
+              status            = ${normalizeStatus(detail.status)},
               result            = ${detail.result ? sql.json(detail.result) : null},
               recording_url     = ${detail.recording_url},
               engagement_status = ${detail.engagement_status},
@@ -61,6 +66,10 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
     if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
       return NextResponse.json({ error: 'Select at least one candidate.' }, { status: 400 });
     }
+    // Postgres raises on a malformed uuid literal, which would surface as a 500.
+    if (!candidateIds.every((v): v is string => typeof v === 'string' && UUID.test(v))) {
+      return NextResponse.json({ error: 'candidateIds must be uuids.' }, { status: 400 });
+    }
 
     const [job] = await sql<Job[]>`select * from jobs where id = ${id}`;
     if (!job) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
@@ -81,16 +90,18 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
             callee_name: c.name,
             mobile_number: c.phone,
             agent_id: agentId,
+            // Every value must be a non-empty string: these interpolate into
+            // the agent's spoken introduction, and a blank reads as a stumble.
             custom_data: {
               job_role: job.title,
-              company: job.company,
+              company: job.company || COMPANY_FALLBACK,
               location: job.location || 'not specified',
             },
             callback_config: callbacks,
           });
           await sql`
             insert into calls (id, candidate_id, status)
-            values (${call.id}, ${c.id}, ${call.status})
+            values (${call.id}, ${c.id}, ${normalizeStatus(call.status)})
             on conflict (id) do nothing
           `;
           return { candidateId: c.id, callId: call.id, ok: true as const };

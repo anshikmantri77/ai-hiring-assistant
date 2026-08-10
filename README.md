@@ -138,7 +138,16 @@ malformed or partial payload cannot corrupt a row.
 npm test
 ```
 
-Covers the no-LLM job-description parser, which is the path the demo runs on.
+Covers the no-LLM job-description parser (the path the demo runs on) and call-status
+normalization. The latter matters: the call-detail `status` is documented as
+"automatically converted to label", so Hunar may return `Not Connected` where the enum
+says `NOT_CONNECTED`. Every status is normalized to the enum spelling before it is
+stored, otherwise terminal-state detection fails and the dashboard polls forever.
+
+### Before the live demo
+
+Replace one phone number in [`data/candidates.sample.json`](data/candidates.sample.json)
+with your own `+91` number — that is the row that will actually ring.
 
 ---
 
@@ -207,3 +216,10 @@ unresolved sites to a human, which is why the reconciliation step exists.
   while every other field fills in from polling.
 - `npm run db:push` applies `schema.sql` directly. There is no migration history; for a
   demo-scale app that is the right amount of machinery.
+- **The app has no authentication.** Anyone who can reach the deployed URL can create a
+  job and launch real, billable phone calls. That is acceptable for a reviewed demo and
+  is a blocker for anything beyond one — the fix is a password gate in `middleware.ts`,
+  deliberately not added here so a reviewer can open the link and use it.
+- Calls are created one request per candidate rather than through
+  `POST /external/v1/calls/bulk/`. Bulk is the right call above roughly fifty
+  candidates; at demo scale the per-call errors are easier to surface individually.

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/db';
-import { getCall } from '@/lib/hunar';
+import { getCall, normalizeStatus } from '@/lib/hunar';
 import { message } from '@/lib/http';
 
 type Params = { params: Promise<{ event: string }> };
@@ -45,7 +45,7 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
 
     await sql`
       update calls set
-        status            = ${detail.status},
+        status            = ${normalizeStatus(detail.status)},
         result            = ${detail.result ? sql.json(detail.result) : null},
         recording_url     = ${detail.recording_url},
         engagement_status = ${detail.engagement_status},
