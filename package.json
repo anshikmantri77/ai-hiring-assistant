@@ -7,10 +7,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "db:push": "node --env-file=.env.local scripts/db-push.mjs",
-    "seed:agent": "node --env-file=.env.local --experimental-strip-types scripts/seed-agent.ts",
+    "db:push": "node --env-file-if-exists=.env.local scripts/db-push.mjs",
+    "seed:agent": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/seed-agent.ts",
     "test": "node --experimental-strip-types --test lib/*.test.ts",
-    "preflight": "node --env-file=.env.local --experimental-strip-types scripts/preflight.ts"
+    "preflight": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/preflight.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",
