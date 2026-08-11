@@ -67,7 +67,7 @@ Run `preflight` first. `POST /external/v1/calls/` returns a `400` if the org has
 validated from-number whose `allowed_countries` includes `IN`, and that failure looks
 identical to a code bug from the dashboard.
 
-Open http://localhost:3000.
+Open https://ai-hiring-assistant-git-master-anshikmantri77s-projects.vercel.app/.
 
 With `PEOPLE_PROVIDER=mock` (the default) and no `ANTHROPIC_API_KEY`, the only paid
 key you need is `HUNAR_API_KEY`.
