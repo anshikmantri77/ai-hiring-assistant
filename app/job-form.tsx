@@ -9,6 +9,8 @@ export function JobForm() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const tooShort = rawJd.trim().length < 20;
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -30,24 +32,40 @@ export function JobForm() {
 
   return (
     <form onSubmit={onSubmit} className="space-y-3">
-      <textarea
-        value={rawJd}
-        onChange={(e) => setRawJd(e.target.value)}
-        rows={10}
-        placeholder="Paste the full job description here…"
-        className="w-full resize-y rounded-lg border border-line bg-panel px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-muted focus:border-accent"
-      />
+      <div className="border-2 border-ink bg-card">
+        <label htmlFor="jd" className="sr-only">
+          Job description
+        </label>
+        <textarea
+          id="jd"
+          value={rawJd}
+          onChange={(e) => setRawJd(e.target.value)}
+          rows={9}
+          placeholder={'Senior Backend Engineer\nBangalore. Java, Spring Boot, microservices. 6+ years.'}
+          className="w-full resize-y bg-transparent px-4 py-3.5 text-[15px] leading-relaxed outline-none placeholder:text-mute/70"
+        />
+        <div className="flex items-center justify-between border-t border-edge px-4 py-2">
+          <span className="font-mono text-[11px] tracking-wider text-mute uppercase">
+            {rawJd.trim().length} chars
+          </span>
+          <span className="font-mono text-[11px] tracking-wider text-mute uppercase">
+            {tooShort ? 'need 20+' : 'ready'}
+          </span>
+        </div>
+      </div>
+
       {error && (
-        <p role="alert" className="text-sm text-red-400">
+        <p role="alert" className="border-2 border-dead bg-dead/8 px-3.5 py-2.5 text-sm font-medium text-dead">
           {error}
         </p>
       )}
+
       <button
         type="submit"
-        disabled={pending || rawJd.trim().length < 20}
-        className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-ink transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={pending || tooShort}
+        className="w-full border-2 border-ink bg-dial px-5 py-3.5 font-display text-base font-extrabold tracking-tight text-white transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-edge disabled:bg-edge disabled:text-mute disabled:hover:translate-y-0 sm:w-auto"
       >
-        {pending ? 'Parsing…' : 'Parse job description'}
+        {pending ? 'Reading it…' : 'Parse this description →'}
       </button>
     </form>
   );

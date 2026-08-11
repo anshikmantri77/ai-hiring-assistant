@@ -1,20 +1,64 @@
 @import 'tailwindcss';
 
 @theme {
-  --color-ink: #0b0e14;
-  --color-panel: #12161f;
-  --color-line: #222835;
-  --color-muted: #8b95a8;
-  --color-accent: #7dd3a0;
+  /* Switchboard palette. Status colours are semantic, not decorative — each
+     call state owns a hue, so the board is readable at a glance. */
+  --color-paper: #f0f1f3;
+  --color-card: #ffffff;
+  --color-ink: #141419;
+  --color-mute: #6f7079;
+  --color-edge: #dcdee3;
+
+  --color-dial: #2b2be8; /* primary action — connection */
+  --color-ring: #f5a524; /* in flight */
+  --color-live: #00a878; /* connected, completed */
+  --color-dead: #e5484d; /* not connected, failed */
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
-  background: var(--color-ink);
-  color: #e6e9ef;
-  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard focus stays visible everywhere, in the action colour. */
+:focus-visible {
+  outline: 2px solid var(--color-dial);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* A live call is the one thing on the page that moves. */
+@keyframes pulse-edge {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.is-live {
+  animation: pulse-edge 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-live {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
 }
