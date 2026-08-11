@@ -204,7 +204,7 @@ async function fromSearchApi(job: ParsedJd, limit: number): Promise<SourcedCandi
 }
 
 /** Assumes Indian numbers when no country code is present — Hunar dials +91. */
-function toE164(raw: string): string {
+export function toE164(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   if (raw.startsWith('+')) return `+${digits}`;

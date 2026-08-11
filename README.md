@@ -174,17 +174,19 @@ silent logic bug would be invisible until production:
 - **Webhook signature verification** — valid, tampered body, wrong key, replayed
   timestamp, multi-segment headers, and missing headers all fail closed.
 
-### Before the live demo
+### Adding a candidate by hand
 
-Point one sourced candidate at a real number. Do this against the database, not the
-sample file, so the number never enters git:
+Sourcing providers differ in what they can return — a SERP-based search finds real
+people but no phone numbers. **Add candidate** on the dashboard takes a name and a
+number and creates a candidate that is immediately callable. A bare 10-digit number is
+assumed Indian and gets a `+91` prefix; `(job_id, phone)` is unique, so adding the same
+number twice returns 409 rather than creating a second row and a second call.
 
-```bash
-npm run set-phone -- "Rohan Mehta" +919876543210
-```
+This is also how you demo the full pipeline with your own number.
 
-Re-running sourcing will not undo it — the upsert is `on conflict do nothing`, and the
-sample row's original number no longer matches that row.
+`npm run set-phone -- "<name>" +91XXXXXXXXXX` does the same thing from the CLI for a
+candidate that already exists. Either way the number lives only in the database, never
+in the repo.
 
 ---
 

@@ -17,7 +17,10 @@ const STATUS_STYLE: Record<string, string> = {
 export function Dashboard({ jobId, initial }: { jobId: string; initial: CandidateRow[] }) {
   const [rows, setRows] = useState(initial);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [busy, setBusy] = useState<null | 'sourcing' | 'calling'>(null);
+  const [busy, setBusy] = useState<null | 'sourcing' | 'calling' | 'adding'>(null);
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -91,6 +94,31 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
     }
   }
 
+  async function addCandidate(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy('adding');
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/candidates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, phone: newPhone }),
+      });
+      const body = (await res.json()) as { name?: string; phone?: string; error?: string };
+      if (!res.ok) throw new Error(body.error ?? 'Could not add the candidate.');
+      setNotice(`Added ${body.name} (${body.phone}). Select them and click Screen.`);
+      setNewName('');
+      setNewPhone('');
+      setAdding(false);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not add the candidate.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function toggle(id: string) {
     // A candidate with no number cannot be dialled; keep it out of the selection
     // rather than letting the launch fail server-side.
@@ -119,8 +147,55 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
         >
           {busy === 'calling' ? 'Launching…' : `Screen ${selected.size || ''} selected`.trim()}
         </button>
+        <button
+          onClick={() => setAdding((v) => !v)}
+          disabled={busy !== null}
+          className="rounded-lg border border-line bg-panel px-3.5 py-2 text-sm transition-colors hover:border-accent disabled:opacity-40"
+        >
+          {adding ? 'Cancel' : 'Add candidate'}
+        </button>
         {inFlight && <span className="text-xs text-muted">Refreshing every 10s…</span>}
       </div>
+
+      {adding && (
+        <form
+          onSubmit={addCandidate}
+          className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-panel px-4 py-3.5"
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Name
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              required
+              placeholder="Priya Sharma"
+              className="rounded border border-line bg-ink px-2.5 py-1.5 text-sm text-[#e6e9ef] outline-none placeholder:text-muted/60 focus:border-accent"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-muted">
+            Phone
+            <input
+              value={newPhone}
+              onChange={(e) => setNewPhone(e.target.value)}
+              required
+              inputMode="tel"
+              placeholder="9876543210"
+              className="rounded border border-line bg-ink px-2.5 py-1.5 text-sm text-[#e6e9ef] outline-none placeholder:text-muted/60 focus:border-accent"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy !== null}
+            className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-ink transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {busy === 'adding' ? 'Adding…' : 'Add'}
+          </button>
+          <p className="w-full text-xs text-muted">
+            A 10-digit number is assumed to be Indian and gets a +91 prefix. This candidate
+            is immediately callable — sourced profiles without a number are not.
+          </p>
+        </form>
+      )}
 
       {error && (
         <p role="alert" className="rounded-lg border border-red-400/40 bg-red-400/5 px-3 py-2 text-sm text-red-300">
