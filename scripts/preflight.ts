@@ -37,7 +37,6 @@ if (!phoneId) {
 }
 
 console.log(webhookServer() ? '✓ Webhooks configured.' : '· Webhooks off (needs https APP_URL + VAPI_WEBHOOK_SECRET) — polling only.');
-if (process.env.VERCEL && !process.env.ADMIN_PASSWORD) problems.push('ADMIN_PASSWORD is not set.');
 
 if (problems.length > 0) {
   console.error('\nBlockers:');
