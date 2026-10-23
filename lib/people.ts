@@ -203,7 +203,7 @@ async function fromSearchApi(job: ParsedJd, limit: number): Promise<SourcedCandi
     });
 }
 
-/** Assumes Indian numbers when no country code is present — Hunar dials +91. */
+/** Assumes Indian numbers when no country code is present — the voice provider dials +91. */
 export function toE164(raw: string): string {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';

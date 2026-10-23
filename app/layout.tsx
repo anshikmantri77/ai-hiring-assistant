@@ -18,7 +18,7 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: 'AI Hiring Assistant',
-  description: 'Source candidates from a job description and screen them with Hunar Voice AI.',
+  description: 'Source candidates from a job description and screen them with Vapi voice AI.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -31,7 +31,7 @@ const SCHEMA = {
 /**
  * Extracts structured fields from a pasted job description.
  * Uses Claude when ANTHROPIC_API_KEY is set; otherwise falls back to keyword
- * extraction so the app runs end-to-end with no paid keys but Hunar's.
+ * extraction so the app runs end-to-end with no paid keys but the voice provider's.
  */
 export async function parseJd(rawJd: string): Promise<ParsedJd> {
   if (!process.env.ANTHROPIC_API_KEY) return keywordParse(rawJd);
