@@ -67,3 +67,10 @@ drop index if exists calls_candidate_id_idx;
 -- Vestigial: the insert always supplies a company, so this default never fired
 -- and 'Hunar.ai' was misleading in a schema dump.
 alter table jobs alter column company set default '';
+
+-- Hunar was replaced by Vapi. A Hunar call still marked in flight can never
+-- settle now (Vapi does not know its id), so close it out instead of letting
+-- the dashboard poll it forever.
+update calls set status = 'FAILED'
+ where status not in ('COMPLETED', 'NOT_CONNECTED', 'CANCELLED', 'FAILED')
+   and created_at < now() - interval '1 day';

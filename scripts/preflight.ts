@@ -1,66 +1,48 @@
-// Verifies the Hunar key works and the org can actually dial +91 numbers,
-// before you spend time on a call that would fail with a 400.
+// Verifies the Vapi configuration before you send anyone an interview link.
 // Run: npm run preflight
-import { listAgents, listNumbers } from '../lib/hunar.ts';
+import { listAssistants, getPhoneNumber, webhookServer } from '../lib/vapi.ts';
 
-const problems = [];
+const problems: string[] = [];
 
-if (!process.env.HUNAR_API_KEY) {
-  console.error('✗ HUNAR_API_KEY is not set in .env.local.');
+if (!process.env.VAPI_PRIVATE_KEY) {
+  console.error('✗ VAPI_PRIVATE_KEY is not set in .env.local.');
   process.exit(1);
 }
 
 try {
-  const { results: agents } = await listAgents();
-  console.log(`✓ Key accepted. ${agents.length} agent(s) on the org.`);
-
-  const configured = process.env.HUNAR_AGENT_ID;
-  if (!configured) {
-    problems.push('HUNAR_AGENT_ID is not set — run `npm run seed:agent`.');
-  } else if (!agents.some((a) => a.id === configured)) {
-    problems.push(`HUNAR_AGENT_ID ${configured} is not an agent on this org.`);
-  } else {
-    console.log(`✓ HUNAR_AGENT_ID resolves to an agent on this org.`);
-  }
+  const assistants = await listAssistants();
+  console.log(`✓ Private key accepted. ${assistants.length} assistant(s) on the org.`);
+  const configured = process.env.VAPI_ASSISTANT_ID;
+  if (!configured) problems.push('VAPI_ASSISTANT_ID is not set — run `npm run seed:agent`.');
+  else if (!assistants.some((a) => a.id === configured)) problems.push(`VAPI_ASSISTANT_ID ${configured} is not on this org.`);
+  else console.log('✓ VAPI_ASSISTANT_ID resolves.');
 } catch (err) {
-  // A bad key surfaces here as a 401/403 — the single most useful early signal.
   console.error(`✗ ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 }
 
-try {
-  const { results: numbers } = await listNumbers();
-  if (numbers.length === 0) {
-    // from_phone_number is optional in the spec, so Hunar may still route via a
-    // platform default. Report what is observable; do not assert the outcome.
-    problems.push(
-      'No from-numbers listed on the org. Calls may still route via a Hunar default, ' +
-        'but nothing here can confirm a +91 destination is permitted — ask Hunar to ' +
-        'confirm or provision an IN-capable number before relying on a live call.',
-    );
+if (!process.env.VAPI_PUBLIC_KEY) problems.push('VAPI_PUBLIC_KEY is not set — interview links will not work.');
+else console.log('✓ VAPI_PUBLIC_KEY set.');
+
+const phoneId = process.env.VAPI_PHONE_NUMBER_ID;
+if (!phoneId) {
+  console.log('· VAPI_PHONE_NUMBER_ID not set — phone calls disabled, interview links only.');
+} else {
+  try {
+    const n = await getPhoneNumber(phoneId);
+    console.log(`✓ Phone number ${n.number ?? n.id} resolves. Free Vapi numbers dial US only; +91 needs an imported Indian SIP/carrier number.`);
+  } catch (err) {
+    problems.push(`VAPI_PHONE_NUMBER_ID does not resolve: ${err instanceof Error ? err.message : err}`);
   }
-  for (const n of numbers) {
-    const dialsIndia = n.allowed_countries.includes('IN');
-    const flags = [
-      n.is_default ? 'default' : null,
-      n.is_validated ? 'validated' : 'NOT VALIDATED',
-      dialsIndia ? 'can dial IN' : 'cannot dial IN',
-    ].filter(Boolean);
-    console.log(`  ${n.phone_number} (${n.country_code}) — ${flags.join(', ')}`);
-  }
-  if (numbers.length > 0 && !numbers.some((n) => n.allowed_countries.includes('IN') && n.is_validated)) {
-    problems.push('No validated from-number allows calling IN — a +91 callee will be rejected.');
-  } else if (numbers.length > 0) {
-    console.log('✓ A validated from-number can dial +91.');
-  }
-} catch (err) {
-  problems.push(`Could not list from-numbers: ${err instanceof Error ? err.message : err}`);
 }
+
+console.log(webhookServer() ? '✓ Webhooks configured.' : '· Webhooks off (needs https APP_URL + VAPI_WEBHOOK_SECRET) — polling only.');
+if (process.env.VERCEL && !process.env.ADMIN_PASSWORD) problems.push('ADMIN_PASSWORD is not set.');
 
 if (problems.length > 0) {
   console.error('\nBlockers:');
   for (const p of problems) console.error(`  ✗ ${p}`);
   process.exitCode = 1;
 } else {
-  console.log('\nPreflight passed — safe to launch a live call.');
+  console.log('\nPreflight passed.');
 }

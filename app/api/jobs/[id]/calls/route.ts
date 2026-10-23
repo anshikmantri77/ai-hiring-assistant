@@ -1,20 +1,18 @@
 import { NextResponse } from 'next/server';
 import { sql, candidateRows, type Candidate, type Job } from '@/lib/db';
-import { createCall, getCall, callbackConfig, normalizeStatus } from '@/lib/hunar';
+import { createPhoneCall, canonicalStatus, screeningVariables, webhookServer } from '@/lib/vapi';
 import { needsRefresh } from '@/lib/call-state';
+import { syncCall } from '@/lib/sync-call';
 import { message } from '@/lib/http';
 
 type Params = { params: Promise<{ id: string }> };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Spoken aloud when a job description names no employer. */
-const COMPANY_FALLBACK = 'the hiring team';
-
 /**
- * Dashboard data. Before returning, any call that is still in flight is
- * refreshed straight from Hunar — this is the fallback for local dev, where
- * Hunar cannot reach a localhost webhook.
+ * Dashboard data. Before returning, any call still in flight is refreshed
+ * straight from Vapi — the fallback for local dev, where Vapi cannot reach a
+ * localhost webhook, and for web calls whose end-of-call report is late.
  */
 export async function GET(_req: Request, { params }: Params): Promise<NextResponse> {
   const { id } = await params;
@@ -25,18 +23,7 @@ export async function GET(_req: Request, { params }: Params): Promise<NextRespon
     await Promise.all(
       pending.map(async (row) => {
         try {
-          const detail = await getCall(row.call!.id);
-          await sql`
-            update calls set
-              status            = ${normalizeStatus(detail.status)},
-              result            = ${detail.result ? sql.json(detail.result) : null},
-              recording_url     = ${detail.recording_url},
-              engagement_status = ${detail.engagement_status},
-              answered_by       = ${detail.answered_by},
-              duration_seconds  = ${detail.duration_seconds},
-              updated_at        = now()
-            where id = ${row.call!.id}
-          `;
+          await syncCall(row.call!.id);
         } catch (err) {
           // One unreachable call must not blank the whole dashboard.
           console.error(`Polling call ${row.call!.id} failed`, err);
@@ -51,26 +38,34 @@ export async function GET(_req: Request, { params }: Params): Promise<NextRespon
   }
 }
 
-/** Launches a screening call per selected candidate. */
+/** Places an outbound PHONE call per selected candidate (optional feature). */
 export async function POST(req: Request, { params }: Params): Promise<NextResponse> {
   const { id } = await params;
   try {
-    // Validate the request before the server's own configuration, so a caller
-    // sending bad input is told about their input rather than our env vars.
     const { candidateIds } = (await req.json()) as { candidateIds?: unknown };
     if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
       return NextResponse.json({ error: 'Select at least one candidate.' }, { status: 400 });
     }
-    // Postgres raises on a malformed uuid literal, which would surface as a 500.
     if (!candidateIds.every((v): v is string => typeof v === 'string' && UUID.test(v))) {
       return NextResponse.json({ error: 'candidateIds must be uuids.' }, { status: 400 });
     }
 
-    const agentId = process.env.HUNAR_AGENT_ID;
-    if (!agentId) {
+    const assistantId = process.env.VAPI_ASSISTANT_ID;
+    if (!assistantId) {
       return NextResponse.json(
-        { error: 'HUNAR_AGENT_ID is not set. Run `npm run seed:agent` and paste the id into .env.local.' },
+        { error: 'VAPI_ASSISTANT_ID is not set. Run `npm run seed:agent` and set it.' },
         { status: 500 },
+      );
+    }
+    const phoneNumberId = process.env.VAPI_PHONE_NUMBER_ID;
+    if (!phoneNumberId) {
+      return NextResponse.json(
+        {
+          error:
+            'Phone calling is not configured (VAPI_PHONE_NUMBER_ID). ' +
+            'Use each candidate’s “interview link” instead — it is free and needs no phone.',
+        },
+        { status: 400 },
       );
     }
 
@@ -85,8 +80,6 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       return NextResponse.json({ error: 'No matching candidates for this job.' }, { status: 404 });
     }
 
-    // Sourcing keeps profiles that arrived without a number; they are real leads
-    // but cannot be dialled until one is attached.
     const reachable = candidates.filter((c): c is Candidate & { phone: string } => Boolean(c.phone));
     const unreachable = candidates.filter((c) => !c.phone);
     if (unreachable.length > 0) {
@@ -94,15 +87,13 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
         {
           error:
             `No phone number for ${unreachable.map((c) => c.name).join(', ')}. ` +
-            'Attach one with `npm run set-phone -- "<name>" <+91…>` before screening.',
+            'Send them their interview link instead.',
         },
         { status: 400 },
       );
     }
 
-    // Guard against double-dispatch. Hunar assigns a fresh call id per request,
-    // so `on conflict (id)` cannot catch this — two clicks would place two real
-    // calls to the same person. Skip anyone who already has a call in flight.
+    // Guard against double-dispatch: two clicks must not place two real calls.
     const busy = await sql<{ candidate_id: string }[]>`
       select distinct candidate_id from calls
        where candidate_id = any(${reachable.map((c) => c.id)}::uuid[])
@@ -119,26 +110,19 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       );
     }
 
-    const callbacks = callbackConfig();
     const outcomes = await Promise.all(
       toCall.map(async (c) => {
         try {
-          const call = await createCall({
-            callee_name: c.name,
-            mobile_number: c.phone,
-            agent_id: agentId,
-            // Every value must be a non-empty string: these interpolate into
-            // the agent's spoken introduction, and a blank reads as a stumble.
-            custom_data: {
-              job_role: job.title,
-              company: job.company || COMPANY_FALLBACK,
-              location: job.location || 'not specified',
-            },
-            callback_config: callbacks,
+          const call = await createPhoneCall({
+            assistantId,
+            phoneNumberId,
+            number: c.phone,
+            name: c.name,
+            variables: screeningVariables(job, c),
           });
           await sql`
             insert into calls (id, candidate_id, status)
-            values (${call.id}, ${c.id}, ${normalizeStatus(call.status)})
+            values (${call.id}, ${c.id}, ${canonicalStatus(call)})
             on conflict (id) do nothing
           `;
           return { candidateId: c.id, callId: call.id, ok: true as const };
@@ -153,8 +137,7 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       launched: outcomes.filter((o) => o.ok).length,
       failed: outcomes.filter((o) => !o.ok),
       skipped,
-      // Surfaced in the UI so a localhost run explains its own missing webhooks.
-      webhooksEnabled: Boolean(callbacks),
+      webhooksEnabled: Boolean(webhookServer()),
     });
   } catch (err) {
     console.error(`POST /api/jobs/${id}/calls failed`, err);

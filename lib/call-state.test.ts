@@ -1,7 +1,7 @@
 // Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeStatus, isSettled } from './hunar.ts';
+import { normalizeStatus, isSettled } from './call-state.ts';
 
 test('normalizes both the enum spelling and the human label', () => {
   assert.equal(normalizeStatus('COMPLETED'), 'COMPLETED');
@@ -42,7 +42,7 @@ test('keeps polling a call that is still running', () => {
 });
 
 test('keeps polling COMPLETED until the result payload lands', () => {
-  // Hunar fills result and recording seconds after the call ends. Stopping at
+  // The voice provider fills result and recording seconds after the call ends. Stopping at
   // COMPLETED left the answers permanently empty on the demo path.
   assert.equal(
     needsRefresh({ status: 'COMPLETED', result: {}, recording_url: null, created_at: at(1) }, now),
