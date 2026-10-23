@@ -70,8 +70,8 @@ npm run dev
 Run `preflight` first. It checks the private key, that the assistant resolves, whether a
 public key is set for interview links, and whether phone calling is configured.
 
-Open https://ai-hiring-assistant-pearl.vercel.app/. The recruiter side asks for
-`ADMIN_PASSWORD` (HTTP Basic, any username).
+Open https://ai-hiring-assistant-pearl.vercel.app/. The recruiter dashboard is
+public — no password required.
 
 With `PEOPLE_PROVIDER=mock` (the default) and no `ANTHROPIC_API_KEY`, the only paid
 key you need is `VAPI_PRIVATE_KEY`; browser interview links also need `VAPI_PUBLIC_KEY`.
@@ -87,7 +87,6 @@ key you need is `VAPI_PRIVATE_KEY`; browser interview links also need `VAPI_PUBL
 | `VAPI_PHONE_NUMBER_ID` | no | Optional. Enables **Phone-call selected**. Free Vapi numbers dial US only; Indian (+91) numbers need an imported SIP/carrier number (Plivo, Exotel, Twilio). |
 | `VAPI_WEBHOOK_SECRET` | for webhooks | Shared secret Vapi sends as `x-vapi-secret`. Generate with `openssl rand -hex 24`. |
 | `APP_URL` | for webhooks | Public HTTPS origin Vapi posts to. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
-| `ADMIN_PASSWORD` | on deployments | Password for the recruiter dashboard (HTTP Basic, any username). Unset = open locally; deployments refuse to serve without it. |
 | `PEOPLE_PROVIDER` | no | `mock` (default), `searchapi`, `pdl`, or `apollo`. |
 | `SEARCHAPI_API_KEY` | only for `searchapi` | SearchAPI.io key. Finds real LinkedIn profiles but returns no phone number — screen those candidates via their interview link. |
 | `PDL_API_KEY` | only for `pdl` | People Data Labs key — free tier on signup. Search is scoped to `dataset: "mobile_phone"` so results carry a dialable number. |
@@ -147,7 +146,7 @@ the webhook path fired rather than the polling fallback.
 
 1. Push the repo to GitHub and import it in Vercel.
 2. Add every variable from the table above as a Vercel environment variable, with
-   `APP_URL` set to your deployment's own `https://` origin, `ADMIN_PASSWORD` set, and
+   `APP_URL` set to your deployment's own `https://` origin and
    `PEOPLE_PROVIDER=searchapi` if you want real candidates.
 3. Deploy, then run `npm run db:push` locally against the same `DATABASE_URL` (the
    schema is not applied automatically).
@@ -276,10 +275,9 @@ unresolved sites to a human, which is why the reconciliation step exists.
   or from polling.
 - `npm run db:push` applies `schema.sql` directly. There is no migration history; for a
   demo-scale app that is the right amount of machinery.
-- **The recruiter side is password-gated.** `middleware.ts` checks `ADMIN_PASSWORD` with
-  HTTP Basic (any username); without the variable, deployments return 503 and local dev
-  stays open. Candidate interview pages, the Vapi webhook and `/api/health` are public by
-  design.
+- **The recruiter dashboard is public.** There is no auth gate, so anyone with the URL can
+  view candidates, phone numbers, call recordings and launch calls. Candidate interview
+  pages, the Vapi webhook and `/api/health` are public by design.
 - Calls are created one request per candidate rather than through Vapi's batch endpoint.
   Batching is the right call above roughly fifty candidates; at demo scale the per-call
   errors are easier to surface individually.
