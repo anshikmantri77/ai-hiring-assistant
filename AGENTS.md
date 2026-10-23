@@ -37,7 +37,7 @@ states, two with full answer extraction.
 | Vercel deployment | **Live**, HTTP 200 |
 | Production `PEOPLE_PROVIDER` | ⚠️ **still `mock`** — the deployed demo shows sample candidates |
 | Production `APP_URL` | ⚠️ **still wrong** — webhooks have never fired in production |
-| App authentication | **`ADMIN_PASSWORD`** HTTP Basic gate on the recruiter side |
+| App authentication | **None** — recruiter dashboard is public |
 
 The two ⚠️ rows are the only things standing between this and a finished submission.
 Both are Vercel environment variables plus a redeploy — no code change. The daily
@@ -98,7 +98,6 @@ lib/
   parse-jd.ts        Claude parser + keyword fallback
   people.ts          4 sourcing providers behind one switch
   http.ts            error message helper
-middleware.ts         ADMIN_PASSWORD Basic-Auth gate for the recruiter side
 scripts/             db-push, seed-agent, preflight, set-phone
 schema.sql           whole schema, create-if-not-exists + idempotent alters
 ```
