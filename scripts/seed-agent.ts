@@ -51,7 +51,7 @@ const config = {
     messages: [{ role: 'system', content: SYSTEM_PROMPT }],
     tools: [{ type: 'endCall' }],
   },
-  voice: { provider: 'vapi', voiceId: 'Neha' },
+  voice: { provider: 'vapi', voiceId: 'Rohan' },
   transcriber: { provider: 'deepgram', model: 'nova-2', language: 'en' },
   maxDurationSeconds: 300,
   artifactPlan: { recordingEnabled: true },
