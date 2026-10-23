@@ -149,7 +149,7 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
           {busy === 'sourcing' ? 'Searching…' : 'Find candidates'}
         </button>
         <button onClick={() => setAdding((v) => !v)} disabled={busy !== null} className={BTN}>
-          {adding ? 'Cancel' : 'Add by phone'}
+          {adding ? 'Cancel' : 'Add candidate'}
         </button>
         <button
           onClick={launch}
@@ -160,7 +160,7 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
             ? 'Dialling…'
             : selected.size > 0
               ? `Call ${selected.size} →`
-              : 'Call selected'}
+              : 'Phone-call selected'}
         </button>
         {inFlight && (
           <span className="flex items-center gap-2 font-mono text-[11px] tracking-widest text-ring uppercase">
@@ -188,9 +188,8 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
               <input
                 value={newPhone}
                 onChange={(e) => setNewPhone(e.target.value)}
-                required
                 inputMode="tel"
-                placeholder="9876543210"
+                placeholder="9876543210 (optional)"
                 className="border-2 border-edge bg-paper px-3 py-2 font-mono text-[15px] tracking-normal text-ink outline-none placeholder:text-mute/60 focus:border-dial"
               />
             </label>
@@ -203,8 +202,7 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
             </button>
           </div>
           <p className="mt-3 text-xs text-mute">
-            A 10-digit number is treated as Indian and gets +91. This person is callable
-            straight away — profiles found by search have no number attached.
+            Phone is optional. Every candidate gets an interview link they can open in a browser; a 10-digit number is treated as Indian (+91) and is only needed for phone calls.
           </p>
         </form>
       )}
@@ -223,14 +221,14 @@ export function Dashboard({ jobId, initial }: { jobId: string; initial: Candidat
           <p className="font-display text-lg font-semibold tracking-tight">No candidates yet</p>
           <p className="mx-auto mt-1.5 max-w-sm text-sm text-mute">
             Hit <span className="font-semibold text-ink">Find candidates</span> to search from this
-            description, or <span className="font-semibold text-ink">Add by phone</span> if you
+            description, or <span className="font-semibold text-ink">Add candidate</span> if you
             already have someone&apos;s number.
           </p>
         </div>
       ) : (
         <>
           <p className="font-mono text-[11px] tracking-widest text-mute uppercase">
-            {rows.length} found · {callable} reachable
+            {rows.length} found · {callable} with phone · all can use an interview link
           </p>
           <ul className="space-y-2">
             {rows.map((row) => (
@@ -310,6 +308,7 @@ function CandidateCard({
                   linkedin ↗
                 </a>
               )}
+              <CopyLink candidateId={row.id} />
             </div>
             {[row.title, row.company, row.location].filter(Boolean).length > 0 && (
               <p className="mt-0.5 truncate text-[13px] text-mute">
@@ -388,4 +387,22 @@ function text(value: unknown): string {
   if (value === null || value === undefined || value === '' || value === '-') return '—';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   return String(value);
+}
+
+/** The candidate's self-serve browser interview. Works with or without a phone number. */
+function CopyLink({ candidateId }: { candidateId: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        await navigator.clipboard.writeText(`${window.location.origin}/interview/${candidateId}`);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="font-mono text-[11px] tracking-wider text-dial uppercase underline-offset-2 hover:underline"
+    >
+      {copied ? 'link copied ✓' : 'interview link ⧉'}
+    </button>
+  );
 }

@@ -31,30 +31,35 @@ const SCHEMA = {
 /**
  * Extracts structured fields from a pasted job description.
  * Uses Claude when ANTHROPIC_API_KEY is set; otherwise falls back to keyword
- * extraction so the app runs end-to-end with no paid keys but Hunar's.
+ * extraction so the app runs end-to-end with no paid keys but the voice provider's.
  */
 export async function parseJd(rawJd: string): Promise<ParsedJd> {
   if (!process.env.ANTHROPIC_API_KEY) return keywordParse(rawJd);
 
-  const client = new Anthropic();
-  const response = await client.messages.create({
-    model: 'claude-opus-5',
-    max_tokens: 4096,
-    output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
-    messages: [
-      {
-        role: 'user',
-        content: `Extract the structured fields from this job description.\n\n${rawJd}`,
-      },
-    ],
-  });
+  try {
+    const client = new Anthropic();
+    const response = await client.messages.create({
+      model: 'claude-opus-5',
+      max_tokens: 4096,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },
+      messages: [
+        {
+          role: 'user',
+          content: `Extract the structured fields from this job description.\n\n${rawJd}`,
+        },
+      ],
+    });
 
-  // A refusal returns HTTP 200 with empty content — fall back rather than crash.
-  if (response.stop_reason === 'refusal') return keywordParse(rawJd);
+    // A refusal returns HTTP 200 with empty content — fall back rather than crash.
+    if (response.stop_reason === 'refusal') return keywordParse(rawJd);
 
-  const text = response.content.find((b) => b.type === 'text')?.text;
-  if (!text) return keywordParse(rawJd);
-  return normalize(JSON.parse(text) as ParsedJd);
+    const text = response.content.find((b) => b.type === 'text')?.text;
+    if (!text) return keywordParse(rawJd);
+    return normalize(JSON.parse(text) as ParsedJd);
+  } catch (err) {
+    console.error('Claude JD parse failed, using keyword parse', err);
+    return keywordParse(rawJd);
+  }
 }
 
 /** Skills we can spot without an LLM. Extend freely — order is irrelevant. */

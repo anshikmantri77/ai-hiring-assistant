@@ -1,8 +1,8 @@
 # AI Hiring Assistant
 
-Paste a job description → source candidates with phone numbers → screen them with a
-[Hunar.ai](https://api.voice.hunar.ai/docs/external/) voice agent → read the answers,
-recordings, and engagement on a dashboard.
+Paste a job description → source candidates → screen them with a
+[Vapi](https://vapi.ai) voice agent, either in the candidate's browser via an interview
+link or by phone → read the answers, recordings, and engagement on a dashboard.
 
 Built as one app because Parts 1 and 2 of the assignment are the same product: an
 AI-driven candidate reachout with a dashboard of responses. Part 3 is answered
@@ -27,18 +27,22 @@ flowchart LR
   S --> DB
 
   U -->|Screen selected| C["/api/jobs/:id/calls"]
-  C -->|POST /external/v1/calls/| H[Hunar Voice AI]
+  C -->|POST /call| H[Vapi voice AI]
   H -->|dials| CAND[Candidate phone]
-  H -->|status / result / recording / summary| W["/api/webhooks/hunar/:event"]
+
+  CAND -->|interview link| I["/interview/:candidateId → browser web call"]
+  I -->|POST /api/interview/:id/call| H
+
+  H -->|status-update / end-of-call-report| W["/api/webhooks/vapi"]
   W --> DB
   C -.->|polling fallback when APP_URL is not public| H
   DB --> D[Dashboard]
 ```
 
-**Why both webhooks and polling.** Hunar posts results to `callback_config` URLs, which
-needs a public HTTPS origin. On `localhost` there is nothing to post to, so
-`GET /api/jobs/:id/calls` re-reads any in-flight call straight from Hunar before
-returning. The dashboard works identically either way; it just tells you which mode
+**Why both webhooks and polling.** Vapi posts server messages to the assistant's
+configured server URL, which needs a public HTTPS origin. On `localhost` there is nothing
+to post to, so `GET /api/jobs/:id/calls` re-reads any in-flight call straight from Vapi
+before returning. The dashboard works identically either way; it just tells you which mode
 it is in.
 
 ### Data model
@@ -47,7 +51,7 @@ it is in.
 |---|---|
 | `jobs` | Raw JD plus the parsed `title`, `company`, `location`, `seniority`, `skills[]` |
 | `candidates` | Sourced people. Deduplicated per job on `(job_id, phone)` for candidates that have a number, and on a partial unique index `(job_id, linkedin) where linkedin is not null` for those that don't — Postgres treats NULLs as distinct, so the phone constraint alone stops deduplicating once `phone` is nullable. Either way, re-running sourcing is idempotent. |
-| `calls` | One row per Hunar call, keyed by **Hunar's** call id — which makes duplicate callbacks idempotent without a mapping table. Holds status, extracted `result` JSON, recording URL, engagement, duration, and `webhook_events` (incremented only by the webhook route). |
+| `calls` | One row per Vapi call, keyed by **Vapi's** call id — which makes duplicate callbacks idempotent without a mapping table. Holds status, extracted `result` JSON, recording URL, engagement, duration, and `webhook_events` (incremented only by the webhook route). |
 
 ---
 
@@ -56,35 +60,38 @@ it is in.
 ```bash
 npm install
 cp .env.example .env.local     # then fill it in — see the table below
-npm run preflight              # verifies the Hunar key and that a from-number can dial +91
+npm run preflight              # verifies the Vapi key and assistant
 npm run db:push                # applies schema.sql (idempotent)
-npm run seed:agent             # prints HUNAR_AGENT_ID; paste it into .env.local
-npm run preflight              # re-run: also confirms HUNAR_AGENT_ID resolves
+npm run seed:agent             # prints VAPI_ASSISTANT_ID; paste it into .env.local
+npm run preflight              # re-run: also confirms VAPI_ASSISTANT_ID resolves
 npm run dev
 ```
 
-Run `preflight` first. `POST /external/v1/calls/` returns a `400` if the org has no
-validated from-number whose `allowed_countries` includes `IN`, and that failure looks
-identical to a code bug from the dashboard.
+Run `preflight` first. It checks the private key, that the assistant resolves, whether a
+public key is set for interview links, and whether phone calling is configured.
 
-Open https://ai-hiring-assistant-git-master-anshikmantri77s-projects.vercel.app/.
+Open https://ai-hiring-assistant-pearl.vercel.app/. The recruiter side asks for
+`ADMIN_PASSWORD` (HTTP Basic, any username).
 
 With `PEOPLE_PROVIDER=mock` (the default) and no `ANTHROPIC_API_KEY`, the only paid
-key you need is `HUNAR_API_KEY`.
+key you need is `VAPI_PRIVATE_KEY`; browser interview links also need `VAPI_PUBLIC_KEY`.
 
 ### Environment variables
 
 | Variable | Required | Purpose |
 |---|---|---|
 | `DATABASE_URL` | yes | Postgres connection string. Supabase: use the **Session pooler** URI with `?sslmode=require`. |
-| `HUNAR_API_KEY` | yes | Sent as the `X-API-Key` header on every Hunar request. |
-| `HUNAR_AGENT_ID` | yes | Produced by `npm run seed:agent`. |
-| `APP_URL` | for webhooks | Public HTTPS origin Hunar calls back. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
-| `WEBHOOK_TOKEN` | for webhooks | Secondary gate appended as `?token=…` to every callback URL. The primary control is Hunar's HMAC signature, verified with `HUNAR_API_KEY`. Generate with `openssl rand -hex 24`. |
+| `VAPI_PRIVATE_KEY` | yes | Server-only Vapi API key, sent as a Bearer token. |
+| `VAPI_PUBLIC_KEY` | for interview links | Sent to the candidate's browser for web calls. Restrict its allowed origins in the Vapi dashboard. |
+| `VAPI_ASSISTANT_ID` | yes | Produced by `npm run seed:agent`. |
+| `VAPI_PHONE_NUMBER_ID` | no | Optional. Enables **Phone-call selected**. Free Vapi numbers dial US only; Indian (+91) numbers need an imported SIP/carrier number (Plivo, Exotel, Twilio). |
+| `VAPI_WEBHOOK_SECRET` | for webhooks | Shared secret Vapi sends as `x-vapi-secret`. Generate with `openssl rand -hex 24`. |
+| `APP_URL` | for webhooks | Public HTTPS origin Vapi posts to. Leave as `http://localhost:3000` locally and the polling fallback takes over. |
+| `ADMIN_PASSWORD` | on deployments | Password for the recruiter dashboard (HTTP Basic, any username). Unset = open locally; deployments refuse to serve without it. |
 | `PEOPLE_PROVIDER` | no | `mock` (default), `searchapi`, `pdl`, or `apollo`. |
-| `SEARCHAPI_API_KEY` | only for `searchapi` | SearchAPI.io key. Finds real LinkedIn profiles but returns no phone number — those candidates are stored as not-callable. |
+| `SEARCHAPI_API_KEY` | only for `searchapi` | SearchAPI.io key. Finds real LinkedIn profiles but returns no phone number — screen those candidates via their interview link. |
 | `PDL_API_KEY` | only for `pdl` | People Data Labs key — free tier on signup. Search is scoped to `dataset: "mobile_phone"` so results carry a dialable number. |
-| `APOLLO_API_KEY` | only for `apollo` | Apollo.io key. Phone numbers come back only on plans with phone reveal enabled; candidates without a number are dropped. |
+| `APOLLO_API_KEY` | only for `apollo` | Apollo.io key. Phone numbers come back only on plans with phone reveal enabled. |
 | `ANTHROPIC_API_KEY` | no | Enables Claude-based JD parsing. Without it, parsing falls back to keyword extraction. |
 
 `.env.local` is gitignored. No key is ever committed or logged.
@@ -100,47 +107,39 @@ from then on will carry live callback URLs.
 
 ---
 
-## Hunar integration
+## Vapi integration
 
-Everything below was verified against the live OpenAPI document at
-`https://api.voice.hunar.ai/docs/external/openapi.json`.
-
-- **Auth** — `X-API-Key: $HUNAR_API_KEY` on every request.
-- **Agent** (`POST /external/v1/agents/`) — created once by `scripts/seed-agent.ts`,
-  or reused if an agent with the same name already exists. Persona `NEHA`, language
-  `ENGLISH`. Its `result_schema` extracts `interested`, `notice_period`,
+- **Auth** — `Authorization: Bearer $VAPI_PRIVATE_KEY` on server requests. The public
+  key is used only by `@vapi-ai/web` in the candidate's browser, and its allowed origins
+  are restricted in the Vapi dashboard.
+- **Assistant** — created or updated in place by `scripts/seed-agent.ts`. The system
+  prompt uses `{{double_braces}}` variables (`candidate_name`, `job_role`, `company`,
+  `location`) and the analysis plan extracts `interested`, `notice_period`,
   `expected_ctc`, `availability`, and `summary`.
-- **Call** (`POST /external/v1/calls/`) — `callee_name`, `mobile_number` (E.164),
-  `agent_id`, `timezone: Asia/Kolkata`, plus `custom_data` carrying `job_role`,
-  `company`, and `location` into the agent's prompt variables.
-- **Detail** (`GET /external/v1/calls/{call_id}/`) — the polling fallback and the
-  source of truth after every webhook.
-- **Statuses** — `NOT_STARTED`, `SCHEDULED`, `INITIATED`, `RINGING`, `IN_PROGRESS`,
-  `COMPLETED`, `NOT_CONNECTED`, `CANCELLED`, `FAILED`. The last four are terminal, so
-  the dashboard stops polling once every call reaches one.
+- **Phone call** (`POST /call`) — optional, enabled by `VAPI_PHONE_NUMBER_ID`.
+  `assistantOverrides.variableValues` carries the screening variables.
+- **Web interview** — `@vapi-ai/web` starts a WebRTC call in the candidate's browser,
+  with no phone number and no carrier charge. The browser then registers the call with
+  `/api/interview/:candidateId/call`, and the server re-verifies it with
+  `GET /call/{id}` (it must exist, use our assistant, and carry this candidate's id).
+- **Detail** (`GET /call/{id}`) — the polling fallback and the source of truth after
+  every webhook. `lib/vapi.ts` maps Vapi's statuses onto the canonical values in
+  `lib/call-state.ts`, so the dashboard logic is provider-agnostic.
 
 ### Webhook authentication
 
-Hunar signs every callback: `X-Hunar-Signature` is a base64 HMAC-SHA256 over
-`{X-Hunar-Timestamp}.` + the raw request body, keyed with an API key, and may carry
-several comma-separated digests when an org has more than one active key. The route
-verifies that signature over the **raw** body before parsing anything, rejects
-timestamps outside a 300-second window to block replays, and compares in constant
-time. A shared `?token=` on the callback URL is kept as a secondary gate.
+Vapi sends `x-vapi-secret` on every server message, configured on the assistant by
+`scripts/seed-agent.ts`. The route compares it in constant time and rejects a missing or
+wrong value with 401.
 
-The payload is then used **only to identify the call** — authoritative state is re-read
-from `GET /external/v1/calls/{call_id}/`. One handler therefore covers all four
-callback shapes, duplicate deliveries converge on the same result, and a partial or
-malformed payload cannot corrupt a row.
-
-Requests that cannot be acted on return **200, not 4xx**: Hunar retries 4xx and 5xx
-four times with exponential backoff, and a payload that is unparseable now will still
-be unparseable on retry.
+The payload is used **only to identify the call** — authoritative state is re-read from
+`GET /call/{id}` by `lib/sync-call.ts`. Duplicate deliveries converge on the same result,
+and a partial or malformed payload cannot corrupt a row. Requests that cannot be acted on
+return **200, not 4xx**: a payload that is unparseable now will still be unparseable on
+retry.
 
 `calls.webhook_events` is incremented only by this route, so a non-zero value is proof
-the webhook path fired rather than the polling fallback. There is no summary column —
-the `call_summary` event carries `status`, `recording_url` and `result`, but no summary
-string, so one would never populate.
+the webhook path fired rather than the polling fallback.
 
 ---
 
@@ -148,10 +147,12 @@ string, so one would never populate.
 
 1. Push the repo to GitHub and import it in Vercel.
 2. Add every variable from the table above as a Vercel environment variable, with
-   `APP_URL` set to your deployment's own `https://` origin.
+   `APP_URL` set to your deployment's own `https://` origin, `ADMIN_PASSWORD` set, and
+   `PEOPLE_PROVIDER=searchapi` if you want real candidates.
 3. Deploy, then run `npm run db:push` locally against the same `DATABASE_URL` (the
    schema is not applied automatically).
-4. Launch one call to your own number and watch the row settle on the dashboard.
+4. Add a candidate, open their interview link, take the call, and watch the row settle
+   on the dashboard. The daily `/api/health` cron keeps a free-tier database awake.
 
 ---
 
@@ -161,26 +162,29 @@ string, so one would never populate.
 npm test
 ```
 
-18 tests, no framework — Node's built-in runner. They cover the three places where a
-silent logic bug would be invisible until production:
+16 tests, no framework — Node's built-in runner. They cover the places where a silent
+logic bug would be invisible until production:
 
 - **Job-description parsing** (the keyword path, which is the default) — including a
   regression for an over-greedy company match that reached the *spoken* introduction.
-- **Call-status handling.** The call-detail `status` is documented as "automatically
-  converted to label", so Hunar may return `Not Connected` where the enum says
-  `NOT_CONNECTED`. Statuses are normalized before storage; without it, terminal-state
-  detection fails and the dashboard polls forever. Also covers the polling window that
-  stays open after `COMPLETED` until `result` and `recording_url` arrive.
-- **Webhook signature verification** — valid, tampered body, wrong key, replayed
-  timestamp, multi-segment headers, and missing headers all fail closed.
+- **Call-status handling and polling** — `lib/call-state.ts` keeps the canonical terminal
+  states and the window that stays open after `COMPLETED` until `result` and
+  `recording_url` arrive.
+- **Vapi mapping** — in-flight statuses never read as settled, `endedReason` maps onto the
+  canonical terminal states, `callFields()` merges the summary and computes duration, and
+  `spoken()` strips template braces and line breaks before a job field is spoken.
 
 ### Adding a candidate by hand
 
 Sourcing providers differ in what they can return — a SERP-based search finds real
-people but no phone numbers. **Add candidate** on the dashboard takes a name and a
-number and creates a candidate that is immediately callable. A bare 10-digit number is
-assumed Indian and gets a `+91` prefix; `(job_id, phone)` is unique, so adding the same
-number twice returns 409 rather than creating a second row and a second call.
+people but no phone numbers. **Add candidate** on the dashboard takes a name and an
+optional number. Phone is optional because every candidate gets an **interview link**;
+with one, they can also be phone-called. A bare 10-digit number is assumed Indian and
+gets a `+91` prefix; `(job_id, phone)` is unique, so adding the same number twice returns
+409 rather than creating a second row and a second call.
+
+Saving a candidate with no phone works because `(job_id, linkedin)` and `(job_id, phone)`
+are separate constraints; a phoneless row is screened via its link instead.
 
 This is also how you demo the full pipeline with your own number.
 
@@ -198,7 +202,7 @@ in the repo.
 **Answer: don't build an app — build a phone call.** Every one of those 100 locations
 already has a working phone: a landline, a feature phone, or a shared handset. Voice is
 the one interface that needs no smartphone, no data plan, no literacy assumption, and no
-device rollout. An LLM voice agent — exactly what the Hunar API in this repo provides —
+device rollout. An LLM voice agent — exactly what the Vapi API in this repo provides —
 turns that phone into the attendance terminal.
 
 **How it works**
@@ -207,7 +211,7 @@ turns that phone into the attendance terminal.
    supervisor. Each worker has a short PIN, issued once on paper.
 2. **The system calls out, on a schedule.** At the start of each shift the platform
    places an outbound call to each site — 100 calls, fanned out in parallel, the same
-   bulk-dispatch shape as `POST /external/v1/calls/bulk/`. Outbound beats inbound: it
+   bulk-dispatch shape as Vapi's batch call endpoint. Outbound beats inbound: it
    removes "the supervisor forgot to call in" as a failure mode, and it timestamps
    itself.
 3. **The agent takes a verbal roll-call.** It reads the roster for that site and the
@@ -248,10 +252,10 @@ unresolved sites to a human, which is why the reconciliation step exists.
 
 - **Sourcing is provider-pluggable, and the providers differ in what they can return.**
   `searchapi` finds real people but no phone numbers; `pdl` and `apollo` can return
-  numbers but gate them behind account tier. A candidate without a number is stored
-  and shown, just not selectable for a call — the checkbox is disabled and the launch
-  endpoint rejects it with a 400. Attach a number with `npm run set-phone` to screen
-  someone found this way.
+  numbers but gate them behind account tier. A candidate without a number is stored and
+  shown, and can still be screened through their **interview link** — only the phone-call
+  checkbox is unavailable. Attach a number with `npm run set-phone` if you need to phone
+  them.
 - **SearchAPI.io** (`PEOPLE_PROVIDER=searchapi`) queries Google restricted to
   `site:linkedin.com/in`, built from the parsed title, location and top skills. It is
   the only provider here that signs up with a personal email, which is why it is the
@@ -267,15 +271,15 @@ unresolved sites to a human, which is why the reconciliation step exists.
   than stored unreachable, so an Apollo search on a free plan can legitimately return
   zero rows.
 - The mock provider exists so the demo never depends on a third-party plan tier.
-- Call summaries arrive only via the `summary` webhook — they are not on Hunar's
-  call-detail response — so on a localhost-only run the summary column stays empty
-  while every other field fills in from polling.
+- Vapi returns its summary beside the structured data; `callFields()` merges it into
+  `result.summary` so the dashboard reads one shape whether the row came from a webhook
+  or from polling.
 - `npm run db:push` applies `schema.sql` directly. There is no migration history; for a
   demo-scale app that is the right amount of machinery.
-- **The app has no authentication.** Anyone who can reach the deployed URL can create a
-  job and launch real, billable phone calls. That is acceptable for a reviewed demo and
-  is a blocker for anything beyond one — the fix is a password gate in `middleware.ts`,
-  deliberately not added here so a reviewer can open the link and use it.
-- Calls are created one request per candidate rather than through
-  `POST /external/v1/calls/bulk/`. Bulk is the right call above roughly fifty
-  candidates; at demo scale the per-call errors are easier to surface individually.
+- **The recruiter side is password-gated.** `middleware.ts` checks `ADMIN_PASSWORD` with
+  HTTP Basic (any username); without the variable, deployments return 503 and local dev
+  stays open. Candidate interview pages, the Vapi webhook and `/api/health` are public by
+  design.
+- Calls are created one request per candidate rather than through Vapi's batch endpoint.
+  Batching is the right call above roughly fifty candidates; at demo scale the per-call
+  errors are easier to surface individually.

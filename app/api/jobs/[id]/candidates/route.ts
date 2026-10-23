@@ -10,7 +10,9 @@ type Params = { params: Promise<{ id: string }> };
  *
  * Sourcing providers differ in what they return — a SERP-based search finds real
  * people but no phone numbers. This is how a recruiter who already has someone's
- * number gets them into the pipeline without touching the database.
+ * number gets them into the pipeline without touching the database. The phone
+ * number is optional: without one the candidate is screened via their interview
+ * link.
  */
 export async function POST(req: Request, { params }: Params): Promise<NextResponse> {
   const { id } = await params;
@@ -22,11 +24,12 @@ export async function POST(req: Request, { params }: Params): Promise<NextRespon
       return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
     }
 
+    // Optional: without a number the candidate is screened via their interview link.
     const rawPhone = typeof body.phone === 'string' ? body.phone.trim() : '';
-    const phone = toE164(rawPhone);
-    if (!/^\+\d{10,15}$/.test(phone)) {
+    const phone = rawPhone ? toE164(rawPhone) : null;
+    if (phone !== null && !/^\+\d{10,15}$/.test(phone)) {
       return NextResponse.json(
-        { error: 'Enter a valid phone number, e.g. 9876543210 or +919876543210.' },
+        { error: 'Enter a valid phone number, e.g. 9876543210 or +919876543210, or leave it blank.' },
         { status: 400 },
       );
     }

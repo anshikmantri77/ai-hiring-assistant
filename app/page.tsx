@@ -5,7 +5,10 @@ import { JobForm } from './job-form';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
-  const jobs = await sql<(Job & { candidate_count: number; call_count: number })[]>`
+  let jobs: (Job & { candidate_count: number; call_count: number })[] = [];
+  let dbError = false;
+  try {
+    jobs = await sql<(Job & { candidate_count: number; call_count: number })[]>`
     select j.*,
            count(distinct c.id)::int  as candidate_count,
            count(distinct cl.id)::int as call_count
@@ -15,7 +18,11 @@ export default async function HomePage() {
      group by j.id
      order by j.created_at desc
      limit 20
-  `;
+    `;
+  } catch (err) {
+    console.error('Home page query failed', err);
+    dbError = true;
+  }
 
   return (
     <main className="space-y-16">
@@ -36,6 +43,12 @@ export default async function HomePage() {
       </section>
 
       <section>
+        {dbError && (
+          <p role="alert" className="mb-4 border-2 border-dead px-3.5 py-2.5 text-sm text-dead">
+            The database is unreachable. On a free Supabase plan this usually means the project
+            was paused for inactivity: restore it in the Supabase dashboard.
+          </p>
+        )}
         <div className="mb-4 flex items-baseline justify-between gap-4 border-b-2 border-ink pb-2">
           <h2 className="font-display text-lg font-extrabold tracking-tight">Your jobs</h2>
           <span className="font-mono text-[11px] tracking-widest text-mute uppercase">

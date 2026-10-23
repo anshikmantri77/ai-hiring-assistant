@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import type { CallResult } from './hunar';
+import type { CallResult } from './vapi';
 
 type Sql = ReturnType<typeof postgres>;
 

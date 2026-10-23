@@ -16,7 +16,7 @@ export function isSettled(status: string | null | undefined): boolean {
 }
 
 /**
- * Hunar fills `result` and `recording_url` asynchronously, some seconds after
+ * The voice provider fills `result` and `recording_url` asynchronously, some seconds after
  * the call reaches COMPLETED. Treating a terminal status as "finished" stops
  * polling too early and leaves the answers permanently empty, so keep going
  * until the payload actually lands — bounded, so a call that never produces
